@@ -1,55 +1,52 @@
-from flask import Flask, request, jsonify
-from scraper import aggregate_search
-from utils import shorten_link, is_premium_user, is_admin, get_vault_balance, withdraw_from_vault
 import os
+import requests
 
-app = Flask(__name__)
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
-@app.route('/search', methods=['GET'])
-def search_movie():
-    query = request.args.get('query')
-    if not query:
-        return jsonify({"error": "Missing 'query' parameter"}), 400
+def shorten_link(long_url):
+    # Placeholder: add monetized shortener here
+    return long_url
 
-    raw_results = aggregate_search(query, tmdb_api_key=TMDB_API_KEY)
-    monetized_results = []
-    for item in raw_results:
-        short_link = shorten_link(item['link'])
-        monetized_results.append({
-            "title": item.get('title', 'No Title'),
-            "link": short_link,
-            "source": item.get('source', 'Unknown')
+def is_premium_user(phone):
+    # Replace with real logic
+    return phone and phone.endswith("7")  # Just a dummy rule
+
+def is_admin(phone):
+    # Replace with real logic
+    return phone == "admin"
+
+def get_vault_balance():
+    # Simulate balance check
+    return 9999
+
+def withdraw_from_vault(amount):
+    # Simulate vault withdrawal logic
+    if amount > 9999:
+        return False
+    return True
+
+def youtube_search(query, max_results=3):
+    url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "part": "snippet",
+        "q": query + " trailer",
+        "key": YOUTUBE_API_KEY,
+        "maxResults": max_results,
+        "type": "video"
+    }
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        return []
+
+    items = response.json().get("items", [])
+    results = []
+    for item in items:
+        video_id = item["id"]["videoId"]
+        snippet = item["snippet"]
+        results.append({
+            "title": snippet["title"],
+            "url": f"https://youtu.be/{video_id}",
+            "channel": snippet.get("channelTitle", "Unknown"),
+            "thumbnail": snippet["thumbnails"]["high"]["url"]
         })
-
-    return jsonify({"results": monetized_results})
-
-
-# Optional: example admin vault check endpoint
-@app.route('/vault/balance', methods=['GET'])
-def vault_balance():
-    phone = request.args.get('phone')
-    if not phone or not is_admin(phone):
-        return jsonify({"error": "Unauthorized or missing phone parameter"}), 403
-    balance = get_vault_balance()
-    return jsonify({"vault_balance": balance})
-
-
-# Optional: admin vault withdraw endpoint
-@app.route('/vault/withdraw', methods=['POST'])
-def vault_withdraw():
-    data = request.json
-    phone = data.get('phone')
-    amount = data.get('amount')
-    if not phone or not is_admin(phone):
-        return jsonify({"error": "Unauthorized"}), 403
-    if not amount or amount <= 0:
-        return jsonify({"error": "Invalid amount"}), 400
-    success = withdraw_from_vault(amount)
-    if not success:
-        return jsonify({"error": "Insufficient balance"}), 400
-    return jsonify({"message": f"Successfully withdrew {amount} units from vault."})
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    return results
