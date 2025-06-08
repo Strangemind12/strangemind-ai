@@ -1,8 +1,10 @@
-# main.py
 import os
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 from pymongo import MongoClient
+
+from scraper import aggregate_search
+from utils import shorten_link
 from config import MONGO_URI, ADMIN_PHONE, NIGERIA_MONTHLY_PRICE
 
 app = Flask(__name__)
@@ -13,14 +15,13 @@ db = client.strangemindDB
 users_collection = db.contacts
 vault_collection = db.vault
 
-ADMIN_PHONE = ADMIN_PHONE
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")  # for movie search
 
 # === UTILS ===
 def send_message(to_phone: str, message: str):
-    # Hook up your WhatsApp or Gupshup API here
+    # Hook your WhatsApp/Gupshup API here
     print(f"[Message -> {to_phone}]: {message}")
 
-# === PREMIUM LOGIC ===
 def is_admin(phone: str) -> bool:
     return phone == ADMIN_PHONE
 
@@ -70,7 +71,6 @@ def withdraw_from_vault(amount: float) -> bool:
     )
     return True
 
-# === COMMAND HANDLER ===
 def handle_admin_command(command_text: str, sender_phone: str) -> str:
     parts = command_text.strip().split()
     command = parts[0].lower()
@@ -110,32 +110,51 @@ def handle_admin_command(command_text: str, sender_phone: str) -> str:
 
     return "❓ Unknown admin command."
 
-# === MESSAGE HANDLER ===
+# === ROUTES ===
+
+# Movie search endpoint
+@app.route('/search', methods=['GET'])
+def search_movie():
+    query = request.args.get('query')
+    if not query:
+        return jsonify({"error": "Missing 'query' parameter"}), 400
+
+    raw_results = aggregate_search(query, TMDB_API_KEY)
+    monetized_results = []
+    for item in raw_results:
+        short_link = shorten_link(item['link'])
+        monetized_results.append({
+            "title": item.get('title', 'No Title'),
+            "link": short_link,
+            "source": item.get('source', 'Unknown')
+        })
+
+    return jsonify({"results": monetized_results})
+
+# Webhook endpoint for messages (e.g., from WhatsApp or other chat services)
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
     phone = data.get('from')
     message = data.get('text')
     is_group = data.get('isGroup', False)
-    group_id = data.get('groupId') if is_group else None
 
-    # Admin commands
+    # Admin commands start with '/'
     if message and message.startswith("/"):
         response = handle_admin_command(message, phone)
         send_message(phone, response)
         return jsonify({"status": "command processed"}), 200
 
-    # Check premium status for user
+    # Premium check
     if not check_premium(phone):
         send_message(phone, "⚠️ Your premium subscription is inactive or expired. Please subscribe to enjoy full features.")
         return jsonify({"status": "premium expired"}), 200
 
-    # Handle normal message (you can extend this)
+    # Normal message handling (extend as needed)
     send_message(phone, f"👋 Hey {phone}, your message was received and you have premium access!")
-
     return jsonify({"status": "success"}), 200
 
-# === PAYMENT WEBHOOK ===
+# Payment webhook for activating premium
 @app.route('/payment-webhook', methods=['POST'])
 def payment_webhook():
     data = request.json
