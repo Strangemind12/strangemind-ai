@@ -25,7 +25,6 @@ def google_movie_search(query):
                 })
     return results
 
-
 def torrent_site_search(query):
     url = f"https://1337x.to/search/{query}/1/"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -41,7 +40,6 @@ def torrent_site_search(query):
             results.append({"title": title, "link": link, "source": "1337x"})
     return results
 
-
 def tmdb_api_search(query, tmdb_api_key):
     api_url = f"https://api.themoviedb.org/3/search/movie"
     params = {"api_key": tmdb_api_key, "query": query}
@@ -56,6 +54,33 @@ def tmdb_api_search(query, tmdb_api_key):
         results.append({"title": title, "link": link, "source": "TMDB"})
     return results
 
+def youtube_search(query, max_results=3, youtube_api_key=None):
+    if not youtube_api_key:
+        return []
+    url = "https://www.googleapis.com/youtube/v3/search"
+    params = {
+        "part": "snippet",
+        "q": query + " trailer",
+        "key": youtube_api_key,
+        "maxResults": max_results,
+        "type": "video"
+    }
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        return []
+
+    items = response.json().get("items", [])
+    results = []
+    for item in items:
+        video_id = item["id"]["videoId"]
+        snippet = item["snippet"]
+        results.append({
+            "title": snippet["title"],
+            "url": f"https://youtu.be/{video_id}",
+            "channel": snippet.get("channelTitle", "Unknown"),
+            "thumbnail": snippet["thumbnails"]["high"]["url"]
+        })
+    return results
 
 def aggregate_search(query, tmdb_api_key=None):
     """
