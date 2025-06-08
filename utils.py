@@ -1,79 +1,55 @@
-from datetime import datetime, timedelta
-from pymongo import MongoClient
-from config import MONGO_URI, ADMIN_PHONE, NIGERIA_MONTHLY_PRICE, ENABLE_PREMIUM
+from flask import Flask, request, jsonify
+from scraper import aggregate_search
+from utils import shorten_link, is_premium_user, is_admin, get_vault_balance, withdraw_from_vault
+import os
 
-# Connect to MongoDB
-client = MongoClient(MONGO_URI)
-db = client.strangemindDB
-users_collection = db.contacts
-vault_collection = db.vault
+app = Flask(__name__)
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 
-# ✅ Check if user is admin
-def is_admin(phone: str) -> bool:
-    return phone == ADMIN_PHONE
+@app.route('/search', methods=['GET'])
+def search_movie():
+    query = request.args.get('query')
+    if not query:
+        return jsonify({"error": "Missing 'query' parameter"}), 400
 
-# ✅ Send a message (replace with real WhatsApp/Gupshup API call)
-def send_message(to_phone: str, message: str):
-    print(f"[Sending to {to_phone}]: {message}")  # Stub for API integration
+    raw_results = aggregate_search(query, tmdb_api_key=TMDB_API_KEY)
+    monetized_results = []
+    for item in raw_results:
+        short_link = shorten_link(item['link'])
+        monetized_results.append({
+            "title": item.get('title', 'No Title'),
+            "link": short_link,
+            "source": item.get('source', 'Unknown')
+        })
 
-# ✅ Grant premium with expiry and vault update
-def grant_premium(phone: str, days: int = 30):
-    expiry_date = datetime.utcnow() + timedelta(days=days)
-    users_collection.update_one(
-        {"phone": phone},
-        {"$set": {"is_premium": True, "premium_expiry": expiry_date}},
-        upsert=True
-    )
-    vault_collection.update_one(
-        {"admin": ADMIN_PHONE},
-        {"$inc": {"balance": NIGERIA_MONTHLY_PRICE}},
-        upsert=True
-    )
-    return expiry_date
+    return jsonify({"results": monetized_results})
 
-# ✅ Revoke premium
-def revoke_premium(phone: str):
-    users_collection.update_one(
-        {"phone": phone},
-        {"$set": {"is_premium": False, "premium_expiry": None}}
-    )
 
-# ✅ Check if a user is premium and not expired
-def check_premium(phone: str) -> bool:
-    if not ENABLE_PREMIUM:
-        return False
+# Optional: example admin vault check endpoint
+@app.route('/vault/balance', methods=['GET'])
+def vault_balance():
+    phone = request.args.get('phone')
+    if not phone or not is_admin(phone):
+        return jsonify({"error": "Unauthorized or missing phone parameter"}), 403
+    balance = get_vault_balance()
+    return jsonify({"vault_balance": balance})
 
-    user = users_collection.find_one({"phone": phone})
-    if not user:
-        return False
 
-    expiry = user.get("premium_expiry")
-    if expiry and expiry > datetime.utcnow():
-        return True
+# Optional: admin vault withdraw endpoint
+@app.route('/vault/withdraw', methods=['POST'])
+def vault_withdraw():
+    data = request.json
+    phone = data.get('phone')
+    amount = data.get('amount')
+    if not phone or not is_admin(phone):
+        return jsonify({"error": "Unauthorized"}), 403
+    if not amount or amount <= 0:
+        return jsonify({"error": "Invalid amount"}), 400
+    success = withdraw_from_vault(amount)
+    if not success:
+        return jsonify({"error": "Insufficient balance"}), 400
+    return jsonify({"message": f"Successfully withdrew {amount} units from vault."})
 
-    # Auto-revoke if expired
-    if user.get("is_premium", False):
-        revoke_premium(phone)
 
-    return False
-
-# ✅ Premium check shortcut for use in webhook
-def is_premium_user(identifier: str) -> bool:
-    return check_premium(identifier)
-
-# ✅ Vault balance checker (admin only)
-def get_vault_balance():
-    vault = vault_collection.find_one({"admin": ADMIN_PHONE})
-    return vault.get("balance", 0.0) if vault else 0.0
-
-# ✅ Vault withdraw (admin only)
-def withdraw_from_vault(amount: float) -> bool:
-    vault = vault_collection.find_one({"admin": ADMIN_PHONE})
-    if not vault or vault.get("balance", 0.0) < amount:
-        return False
-
-    vault_collection.update_one(
-        {"admin": ADMIN_PHONE},
-        {"$inc": {"balance": -amount}}
-    )
-    return True
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
