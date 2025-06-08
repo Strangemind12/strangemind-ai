@@ -58,6 +58,13 @@ def tmdb_api_search(query, tmdb_api_key):
 
 
 def aggregate_search(query, tmdb_api_key=None):
+    """
+    Aggregate movie search from multiple sources:
+    - Google (search for direct download/stream links)
+    - Torrent site (1337x)
+    - TMDB API (official movie database)
+    Returns a combined list of dicts with keys: title, link, source
+    """
     results = []
 
     try:
