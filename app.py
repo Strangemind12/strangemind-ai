@@ -9,6 +9,9 @@ from config import MONGO_URI, ADMIN_PHONE, NIGERIA_MONTHLY_PRICE
 from premium_user_model import is_premium, create_premium_user
 from abuse_detection import is_spammy
 
+# Import your referral functions here:
+from referral import create_referral, get_my_referral_code, get_referral_rankings, get_referrer_info
+
 app = Flask(__name__)
 
 # === DB Setup ===
@@ -100,7 +103,7 @@ def webhook():
         bot_phone = os.getenv("BOT_PHONE")
         mentions_bot = bot_phone in mentions
 
-    # Group chat logic
+    # GROUP CHAT LOGIC
     if is_group:
         # Ignore if not a command or not mentioning bot
         if not (mentions_bot or message.startswith("/")):
@@ -120,6 +123,28 @@ def webhook():
             else:
                 send_message(phone, "⛔ You are not authorized to perform admin actions.")
                 return jsonify({"status": "unauthorized admin command"}), 403
+
+        # REFERRAL COMMANDS (Group)
+        if message.lower().startswith("/refer "):
+            ref_code = message[len("/refer "):].strip()
+            response = create_referral(phone, ref_code)
+            send_message(phone, response)
+            return jsonify({"status": "referral processed"}), 200
+
+        if message.lower() == "/refer":
+            response = get_my_referral_code(phone)
+            send_message(phone, response)
+            return jsonify({"status": "referral code shared"}), 200
+
+        if message.lower() == "/referred":
+            response = get_referrer_info(phone)
+            send_message(phone, response)
+            return jsonify({"status": "referrer info"}), 200
+
+        if message.lower() == "/rank":
+            response = get_referral_rankings()
+            send_message(phone, response)
+            return jsonify({"status": "referral rankings"}), 200
 
         # /movie command
         if message.lower().startswith("/movie "):
@@ -162,8 +187,31 @@ def webhook():
 
         return jsonify({"status": "ignored"}), 200
 
-    # Direct message logic (non-group)
-    # Use your existing on_message_received or similar
+    # DIRECT MESSAGE LOGIC (non-group)
+
+    # REFERRAL COMMANDS (DM)
+    if message.lower().startswith("/refer "):
+        ref_code = message[len("/refer "):].strip()
+        response = create_referral(phone, ref_code)
+        send_message(phone, response)
+        return jsonify({"status": "referral processed"}), 200
+
+    if message.lower() == "/refer":
+        response = get_my_referral_code(phone)
+        send_message(phone, response)
+        return jsonify({"status": "referral code shared"}), 200
+
+    if message.lower() == "/referred":
+        response = get_referrer_info(phone)
+        send_message(phone, response)
+        return jsonify({"status": "referrer info"}), 200
+
+    if message.lower() == "/rank":
+        response = get_referral_rankings()
+        send_message(phone, response)
+        return jsonify({"status": "referral rankings"}), 200
+
+    # /movie command (DM)
     if message.lower().startswith("/movie "):
         query = message[len("/movie "):].strip()
         if not check_premium(phone):
@@ -172,6 +220,7 @@ def webhook():
         handle_movie_command(phone, query)
         return jsonify({"status": "movie command processed"}), 200
 
+    # /search command (premium gated DM)
     if message.lower().startswith("/search "):
         if not check_premium(phone):
             send_message(phone, "⚠️ Your premium is inactive. Subscribe to unlock full features.")
