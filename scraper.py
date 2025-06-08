@@ -1,12 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 
-
 def google_movie_search(query):
-    """
-    Scrape Google search results for movie download/streaming links.
-    Return a list of dicts with title, link, and source.
-    """
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -32,16 +27,13 @@ def google_movie_search(query):
 
 
 def torrent_site_search(query):
-    """
-    Scrape 1337x.to for torrent links.
-    """
     url = f"https://1337x.to/search/{query}/1/"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     r = requests.get(url, headers=headers)
     soup = BeautifulSoup(r.text, "html.parser")
 
     results = []
-    for row in soup.select("table.table-list tr")[1:6]:  # Top 5 results
+    for row in soup.select("table.table-list tr")[1:6]:
         link_tag = row.select_one("td.coll-1 a")
         if link_tag:
             title = link_tag.text.strip()
@@ -51,10 +43,6 @@ def torrent_site_search(query):
 
 
 def tmdb_api_search(query, tmdb_api_key):
-    """
-    Search The Movie DB API for movie info & trailers.
-    Requires TMDB API key.
-    """
     api_url = f"https://api.themoviedb.org/3/search/movie"
     params = {"api_key": tmdb_api_key, "query": query}
     res = requests.get(api_url, params=params)
@@ -62,7 +50,7 @@ def tmdb_api_search(query, tmdb_api_key):
         return []
     data = res.json()
     results = []
-    for movie in data.get("results", [])[:5]:  # Limit to top 5
+    for movie in data.get("results", [])[:5]:
         title = movie.get("title")
         link = f"https://www.themoviedb.org/movie/{movie.get('id')}"
         results.append({"title": title, "link": link, "source": "TMDB"})
@@ -70,9 +58,6 @@ def tmdb_api_search(query, tmdb_api_key):
 
 
 def aggregate_search(query, tmdb_api_key=None):
-    """
-    Aggregate results from multiple sources (Google, 1337x, TMDB).
-    """
     results = []
 
     try:
