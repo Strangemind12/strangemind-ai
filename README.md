@@ -33,18 +33,18 @@
    ```bash
    git clone https://github.com/Strangemind12/strangemind-ai.git
    cd strangemind-ai
-   ```
 
 2. Install dependencies:
-   ```bash
-   npm install
-   ```
+
+npm install
+
 
 3. Configure environment variables:
 
-Create a `.env` file in the root directory and add:
 
-```env
+
+Create a .env file in the root directory and add:
+
 GUPSHUP_API_KEY=your_gupshup_api_key
 BOT_NAME=Strangemind AI
 OPENAI_API_KEY=your_openai_key
@@ -76,47 +76,56 @@ GAME_WITHDRAWAL_WEBHOOK=https://your-server.com/api/withdraw
 # Referral bonuses
 REFERRAL_BONUS_REFERRER=100
 REFERRAL_BONUS_NEW_USER=50
-```
+
 
 ---
 
-### Running the Bot
+Running the Bot
 
-```bash
 npm start
-```
 
 The bot will connect to WhatsApp via Gupshup API, initialize the database, and start listening for messages.
 
----
-
-## Usage 📱
-
-- Chat with the bot to earn XP and coins.
-- Use `/movie <movie name>` to search and stream movies.
-- Use `/vault` or `/mybox` to check your coin balance and XP.
-- Use `/withdraw` to cash out your coins (if enabled).
-- Use `/refer` to get your referral code and invite friends.
-- Use `/top` to see the leaderboard.
 
 ---
 
-## Contributing 🤝
+Usage 📱
+
+Chat with the bot to earn XP and coins.
+
+Use /movie <movie name> to search and stream movies.
+
+Use /vault or /mybox to check your coin balance and XP.
+
+Use /withdraw to cash out your coins (if enabled).
+
+Use /refer to get your referral code and invite friends.
+
+Use /top to see the leaderboard.
+
+
+
+---
+
+Contributing 🤝
 
 Feel free to fork, improve, and submit pull requests. For major changes, open an issue first to discuss your ideas.
 
+
 ---
 
-## License
+License
 
 MIT License
 
----
-
-## Contact
-
-For support and inquiries, reach out via WhatsApp at the admin number set in `.env`.
 
 ---
 
-*Built with 💡 and ☕ by Strangemind*
+Contact
+
+For support and inquiries, reach out via WhatsApp at the admin number set in .env.
+
+
+---
+
+Built with 💡 and ☕ by Strangemind
