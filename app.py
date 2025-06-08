@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 from scraper import aggregate_search
-from utils import shorten_link, youtube_search
+from utils import shorten_link, youtube_search, is_premium_user, is_admin, get_vault_balance, withdraw_from_vault
 from config import MONGO_URI, ADMIN_PHONE, NIGERIA_MONTHLY_PRICE
 
 app = Flask(__name__)
@@ -14,13 +14,11 @@ db = client.strangemindDB
 users_collection = db.contacts
 vault_collection = db.vault
 
-# === Utils ===
+# === Helper functions ===
+
 def send_message(to_phone: str, message: str):
     # Hook your WhatsApp or Gupshup API here
     print(f"[Message to {to_phone}]: {message}")
-
-def is_admin(phone: str) -> bool:
-    return phone == ADMIN_PHONE
 
 def grant_premium(phone: str, days: int = 30):
     expiry_date = datetime.utcnow() + timedelta(days=days)
@@ -53,60 +51,17 @@ def check_premium(phone: str) -> bool:
         revoke_premium(phone)
     return False
 
-def get_vault_balance():
-    vault = vault_collection.find_one({"admin": ADMIN_PHONE})
-    return vault.get("balance", 0) if vault else 0
-
-def withdraw_from_vault(amount: float) -> bool:
-    vault = vault_collection.find_one({"admin": ADMIN_PHONE})
-    if not vault or vault.get("balance", 0) < amount:
-        return False
-    vault_collection.update_one(
-        {"admin": ADMIN_PHONE},
-        {"$inc": {"balance": -amount}}
-    )
-    return True
-
-def handle_admin_command(command_text: str, sender_phone: str) -> str:
-    parts = command_text.strip().split()
-    command = parts[0].lower()
-
-    if not is_admin(sender_phone):
-        return "⛔ You are not authorized to perform admin actions."
-
-    if command == "/grant" and len(parts) >= 2:
-        target_phone = parts[1]
-        days = int(parts[2]) if len(parts) == 3 else 30
-        expiry = grant_premium(target_phone, days)
-        return f"✅ Premium granted to {target_phone} until {expiry.strftime('%Y-%m-%d')}."
-
-    if command == "/revoke" and len(parts) == 2:
-        revoke_premium(parts[1])
-        return f"❌ Premium revoked from {parts[1]}."
-
-    if command == "/checkpremium" and len(parts) == 2:
-        status = check_premium(parts[1])
-        return f"🔍 Premium status for {parts[1]}: {'✅ ACTIVE' if status else '❌ INACTIVE'}."
-
-    if command == "/vaultbalance":
-        return f"💰 Vault balance: ₦{get_vault_balance()}"
-
-    if command == "/withdraw" and len(parts) == 2:
-        try:
-            amount = float(parts[1])
-        except ValueError:
-            return "❌ Invalid amount format."
-        return f"💸 ₦{amount} withdrawn." if withdraw_from_vault(amount) else "❌ Insufficient vault balance."
-
-    return "❓ Unknown admin command."
-
 # === Routes ===
 
 @app.route('/search', methods=['GET'])
 def search_movie_api():
     query = request.args.get('query')
+    phone = request.args.get('phone')  # for premium check
+
     if not query:
         return jsonify({"error": "Missing 'query' parameter"}), 400
+
+    is_premium = phone and check_premium(phone)  # use your own premium check, not utils.is_premium_user
 
     raw_results = aggregate_search(query, os.getenv("TMDB_API_KEY"))
     monetized_results = [
@@ -117,7 +72,37 @@ def search_movie_api():
         }
         for item in raw_results
     ]
-    return jsonify({"results": monetized_results})
+
+    trailers = youtube_search(query) if is_premium else []
+
+    return jsonify({
+        "status": "success",
+        "premium_user": bool(is_premium),
+        "movies": monetized_results,
+        "trailers": trailers if is_premium else "Upgrade to premium to view trailers 🎥"
+    })
+
+@app.route('/vault/balance', methods=['GET'])
+def vault_balance():
+    phone = request.args.get('phone')
+    if not phone or not is_admin(phone):
+        return jsonify({"error": "Unauthorized or missing phone parameter"}), 403
+    balance = get_vault_balance()
+    return jsonify({"vault_balance": balance})
+
+@app.route('/vault/withdraw', methods=['POST'])
+def vault_withdraw():
+    data = request.json
+    phone = data.get('phone')
+    amount = data.get('amount')
+    if not phone or not is_admin(phone):
+        return jsonify({"error": "Unauthorized"}), 403
+    if not amount or amount <= 0:
+        return jsonify({"error": "Invalid amount"}), 400
+    success = withdraw_from_vault(amount)
+    if not success:
+        return jsonify({"error": "Insufficient balance"}), 400
+    return jsonify({"message": f"Successfully withdrew {amount} units from vault."})
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -175,6 +160,42 @@ def payment_webhook():
         return jsonify({"status": "premium granted"}), 200
 
     return jsonify({"error": "Insufficient payment"}), 400
+
+
+# === Admin command handler (kept from your original) ===
+def handle_admin_command(command_text: str, sender_phone: str) -> str:
+    parts = command_text.strip().split()
+    command = parts[0].lower()
+
+    if not is_admin(sender_phone):
+        return "⛔ You are not authorized to perform admin actions."
+
+    if command == "/grant" and len(parts) >= 2:
+        target_phone = parts[1]
+        days = int(parts[2]) if len(parts) == 3 else 30
+        expiry = grant_premium(target_phone, days)
+        return f"✅ Premium granted to {target_phone} until {expiry.strftime('%Y-%m-%d')}."
+
+    if command == "/revoke" and len(parts) == 2:
+        revoke_premium(parts[1])
+        return f"❌ Premium revoked from {parts[1]}."
+
+    if command == "/checkpremium" and len(parts) == 2:
+        status = check_premium(parts[1])
+        return f"🔍 Premium status for {parts[1]}: {'✅ ACTIVE' if status else '❌ INACTIVE'}."
+
+    if command == "/vaultbalance":
+        return f"💰 Vault balance: ₦{get_vault_balance()}"
+
+    if command == "/withdraw" and len(parts) == 2:
+        try:
+            amount = float(parts[1])
+        except ValueError:
+            return "❌ Invalid amount format."
+        return f"💸 ₦{amount} withdrawn." if withdraw_from_vault(amount) else "❌ Insufficient vault balance."
+
+    return "❓ Unknown admin command."
+
 
 # === App Start ===
 if __name__ == '__main__':
