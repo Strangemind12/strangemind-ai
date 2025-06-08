@@ -1,14 +1,17 @@
 import requests
 from bs4 import BeautifulSoup
 
+
 def google_movie_search(query):
     """
     Scrape Google search results for movie download/streaming links.
     Return a list of dicts with title, link, and source.
     """
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
+        )
     }
     search_url = f"https://www.google.com/search?q={query}+movie+download+links"
     res = requests.get(search_url, headers=headers)
@@ -19,10 +22,9 @@ def google_movie_search(query):
         href = a.get('href')
         text = a.get_text()
         if href and "http" in href:
-            # naive filter, you want to do better checks here for legit links
-            if any(ext in href for ext in ['.mp4', '.mkv', 'torrent', 'stream']):
+            if any(ext in href.lower() for ext in ['.mp4', '.mkv', 'torrent', 'stream']):
                 results.append({
-                    "title": text[:50],
+                    "title": text[:50] or "Unnamed Link",
                     "link": href,
                     "source": "Google"
                 })
@@ -31,8 +33,7 @@ def google_movie_search(query):
 
 def torrent_site_search(query):
     """
-    Example scraping from a torrent site (e.g., 1337x.to).
-    Update selectors if site structure changes.
+    Scrape 1337x.to for torrent links.
     """
     url = f"https://1337x.to/search/{query}/1/"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -40,8 +41,7 @@ def torrent_site_search(query):
     soup = BeautifulSoup(r.text, "html.parser")
 
     results = []
-    # Note: Make sure this selector matches the actual site layout
-    for row in soup.select("table.table-list tr")[1:6]:  # top 5 results
+    for row in soup.select("table.table-list tr")[1:6]:  # Top 5 results
         link_tag = row.select_one("td.coll-1 a")
         if link_tag:
             title = link_tag.text.strip()
@@ -55,13 +55,14 @@ def tmdb_api_search(query, tmdb_api_key):
     Search The Movie DB API for movie info & trailers.
     Requires TMDB API key.
     """
-    api_url = f"https://api.themoviedb.org/3/search/movie?api_key={tmdb_api_key}&query={query}"
-    res = requests.get(api_url)
+    api_url = f"https://api.themoviedb.org/3/search/movie"
+    params = {"api_key": tmdb_api_key, "query": query}
+    res = requests.get(api_url, params=params)
     if res.status_code != 200:
         return []
     data = res.json()
     results = []
-    for movie in data.get("results", [])[:5]:
+    for movie in data.get("results", [])[:5]:  # Limit to top 5
         title = movie.get("title")
         link = f"https://www.themoviedb.org/movie/{movie.get('id')}"
         results.append({"title": title, "link": link, "source": "TMDB"})
@@ -69,10 +70,25 @@ def tmdb_api_search(query, tmdb_api_key):
 
 
 def aggregate_search(query, tmdb_api_key=None):
+    """
+    Aggregate results from multiple sources (Google, 1337x, TMDB).
+    """
     results = []
-    results.extend(google_movie_search(query))
-    results.extend(torrent_site_search(query))
+
+    try:
+        results.extend(google_movie_search(query))
+    except Exception as e:
+        print(f"Google search failed: {e}")
+
+    try:
+        results.extend(torrent_site_search(query))
+    except Exception as e:
+        print(f"Torrent search failed: {e}")
+
     if tmdb_api_key:
-        results.extend(tmdb_api_search(query, tmdb_api_key))
-    # Optional: remove duplicates or sort by relevance here
+        try:
+            results.extend(tmdb_api_search(query, tmdb_api_key))
+        except Exception as e:
+            print(f"TMDB search failed: {e}")
+
     return results
