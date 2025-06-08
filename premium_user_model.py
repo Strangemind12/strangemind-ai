@@ -1,56 +1,89 @@
-strangemind_ai/premium_user_model.py
+# strangemind_ai/premium_user_model.py
 
-from datetime import datetime, timedelta from pymongo import MongoClient import os from flask import Flask, request, jsonify
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+from flask import Flask, request, jsonify
+import os
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/") client = MongoClient(MONGO_URI) db = client["strangemind"] premium_users = db["premium_users"]
+# --- DB Setup ---
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+client = MongoClient(MONGO_URI)
+db = client["strangemind"]
+premium_users = db["premium_users"]
 
-Step 1: Create or update premium user
+# --- Core Premium Logic ---
 
-def create_premium_user(phone, plan_type="monthly", payment_ref=None): now = datetime.utcnow() expiry = now + timedelta(days=30 if plan_type == "monthly" else 365)
+def grant_premium(user_id, plan_type="monthly", payment_ref="manual_transfer"):
+    now = datetime.utcnow()
+    duration = timedelta(days=30 if plan_type == "monthly" else 365)
+    expiry = now + duration
+    premium_users.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "premium": True,
+                "plan_type": plan_type,
+                "payment_ref": payment_ref,
+                "subscribed_at": now,
+                "expires_at": expiry,
+                "last_payment": now
+            }
+        },
+        upsert=True
+    )
+    return expiry
 
-premium_users.update_one(
-    {"phone": phone},
-    {"$set": {
-        "premium": True,
-        "plan_type": plan_type,
-        "subscription_start": now,
-        "subscription_expiry": expiry,
-        "payment_ref": payment_ref,
-        "last_payment": now
-    }},
-    upsert=True
-)
-return True
+def revoke_premium(user_id):
+    premium_users.update_one({"user_id": user_id}, {"$set": {"premium": False}})
+    return True
 
-Step 2: Subscription checks
+def is_premium(user_id):
+    user = premium_users.find_one({"user_id": user_id})
+    if not user or not user.get("premium"):
+        return False
+    if user.get("expires_at") and user["expires_at"] < datetime.utcnow():
+        premium_users.update_one({"user_id": user_id}, {"$set": {"premium": False}})
+        return False
+    return True
 
-def is_premium(phone): user = premium_users.find_one({"phone": phone}) return bool(user and user.get("premium") and user.get("subscription_expiry") > datetime.utcnow())
+def time_remaining(user_id):
+    user = premium_users.find_one({"user_id": user_id})
+    if user and user.get("expires_at"):
+        return user["expires_at"] - datetime.utcnow()
+    return timedelta(0)
 
-def time_remaining(phone): user = premium_users.find_one({"phone": phone}) return user["subscription_expiry"] - datetime.utcnow() if user and user.get("subscription_expiry") else timedelta(0)
+# --- Decorator for Premium-only Features ---
 
-Step 3: Admin Commands
+def require_premium(func):
+    def wrapper(user_id, *args, **kwargs):
+        if not is_premium(user_id):
+            return "⚠️ This feature is premium-only. Upgrade to access."
+        return func(user_id, *args, **kwargs)
+    return wrapper
 
-def grant_premium(phone, days): now = datetime.utcnow() expiry = now + timedelta(days=days) premium_users.update_one( {"phone": phone}, {"$set": { "premium": True, "subscription_start": now, "subscription_expiry": expiry, "payment_ref": "admin-granted", "last_payment": now }}, upsert=True ) return True
+# Example Usage
+@require_premium
+def access_premium_feature(user_id):
+    return "🎉 Welcome to premium feature X!"
 
-def revoke_premium(phone): premium_users.update_one({"phone": phone}, {"$set": {"premium": False}}) return True
+# --- Webhook for Manual Payment Trigger (SMSGate-compatible) ---
+# This is optional if using webhook-style confirmation.
 
-Step 4: Decorator for Premium Features
+app = Flask(__name__)
 
-def require_premium(func): def wrapper(phone, *args, **kwargs): if not is_premium(phone): return "⚠️ This feature is premium-only. Upgrade to access." return func(phone, *args, **kwargs) return wrapper
+@app.route('/api/payment-webhook', methods=['POST'])
+def payment_webhook():
+    data = request.json
+    user_id = data.get("user_id") or data.get("phone")  # fallback
+    ref = data.get("reference")
+    amount = int(data.get("amount", 0))
+    plan = "monthly" if amount < 10000 else "yearly"
 
-@require_premium def access_premium_feature(phone): return "🎉 Welcome to premium feature X!"
+    if user_id and ref:
+        grant_premium(user_id, plan_type=plan, payment_ref=ref)
+        return jsonify({"status": "success"}), 200
+    else:
+        return jsonify({"status": "fail", "reason": "missing data"}), 400
 
-Optional: Webhook Listener
-
-app = Flask(name)
-
-@app.route('/api/payment-webhook', methods=['POST']) def payment_webhook(): data = request.json phone = data.get("phone") ref = data.get("reference") amount = data.get("amount") plan = "monthly" if amount < 10000 else "yearly"
-
-if phone and ref:
-    create_premium_user(phone, plan_type=plan, payment_ref=ref)
-    return jsonify({"status": "success"}), 200
-else:
-    return jsonify({"status": "fail", "reason": "missing data"}), 400
-
-if name == 'main': app.run(debug=True)
-
+if __name__ == "__main__":
+    app.run(debug=True)
