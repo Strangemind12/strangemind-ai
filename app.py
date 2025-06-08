@@ -2,9 +2,13 @@ import os
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 from pymongo import MongoClient
+
+# Your imports for scraping, utils, configs, premium user model, abuse detection
 from scraper import aggregate_search
-from utils import shorten_link, youtube_search, is_premium_user, is_admin, get_vault_balance, withdraw_from_vault
+from utils import shorten_link, youtube_search, is_admin, get_vault_balance, withdraw_from_vault
 from config import MONGO_URI, ADMIN_PHONE, NIGERIA_MONTHLY_PRICE
+from premium_user_model import is_premium, create_premium_user
+from abuse_detection import is_spammy
 
 app = Flask(__name__)
 
@@ -51,7 +55,11 @@ def check_premium(phone: str) -> bool:
         revoke_premium(phone)
     return False
 
-# === Routes ===
+# === Routes from your first app ===
+
+@app.route('/')
+def home():
+    return "🔥 Strangemind AI API is running!"
 
 @app.route('/search', methods=['GET'])
 def search_movie_api():
@@ -61,7 +69,7 @@ def search_movie_api():
     if not query:
         return jsonify({"error": "Missing 'query' parameter"}), 400
 
-    is_premium = phone and check_premium(phone)  # use your own premium check, not utils.is_premium_user
+    is_user_premium = phone and check_premium(phone)
 
     raw_results = aggregate_search(query, os.getenv("TMDB_API_KEY"))
     monetized_results = [
@@ -73,13 +81,13 @@ def search_movie_api():
         for item in raw_results
     ]
 
-    trailers = youtube_search(query) if is_premium else []
+    trailers = youtube_search(query) if is_user_premium else []
 
     return jsonify({
         "status": "success",
-        "premium_user": bool(is_premium),
+        "premium_user": bool(is_user_premium),
         "movies": monetized_results,
-        "trailers": trailers if is_premium else "Upgrade to premium to view trailers 🎥"
+        "trailers": trailers if is_user_premium else "Upgrade to premium to view trailers 🎥"
     })
 
 @app.route('/vault/balance', methods=['GET'])
@@ -114,8 +122,11 @@ def webhook():
     if not message:
         return jsonify({"status": "empty message"}), 400
 
+    if is_spammy(message):
+        send_message(phone, "🚫 Spam detected. Message blocked.")
+        return jsonify({"status": "blocked", "reason": "spam detected"}), 403
+
     if message.startswith("/"):
-        # Admin or user commands
         if message.lower().startswith("/search "):
             if not check_premium(phone):
                 send_message(phone, "⚠️ Your premium is inactive. Subscribe to unlock full features.")
@@ -135,34 +146,67 @@ def webhook():
             send_message(phone, "\n\n".join(replies) if replies else "🙁 No results found.")
             return jsonify({"status": "search processed"}), 200
 
-        # Otherwise, assume admin command
+        # Otherwise admin commands
         response = handle_admin_command(message, phone)
         send_message(phone, response)
         return jsonify({"status": "command processed"}), 200
 
-    # Default message
+    # Default reply for non-command
     send_message(phone, "📽 Send `/search movie name` to get links + trailers!")
     return jsonify({"status": "idle"}), 200
 
 @app.route('/payment-webhook', methods=['POST'])
 def payment_webhook():
     data = request.json
-    phone = data.get('customer_phone')
+    phone = data.get('customer_phone') or data.get('phone')
     amount = float(data.get('amount', 0))
     status = data.get('status')
 
     if status != "successful":
         return jsonify({"status": "ignored"}), 200
 
-    if amount >= NIGERIA_MONTHLY_PRICE:
+    if amount >= NIGERIA_MONTHLY_PRICE and phone:
         expiry = grant_premium(phone, 30)
         send_message(phone, f"✅ Premium activated! Valid till {expiry.strftime('%Y-%m-%d')}")
         return jsonify({"status": "premium granted"}), 200
 
     return jsonify({"error": "Insufficient payment"}), 400
 
+# === Your second app's additional API endpoints ===
 
-# === Admin command handler (kept from your original) ===
+@app.route('/api/payment-webhook', methods=['POST'])
+def api_payment_webhook():
+    data = request.json
+    phone = data.get("phone")
+    ref = data.get("reference")
+    amount = data.get("amount")
+    plan = "monthly" if amount < 10000 else "yearly"
+
+    if phone and ref:
+        create_premium_user(phone, plan_type=plan, payment_ref=ref)
+        return jsonify({"status": "success"}), 200
+    return jsonify({"status": "fail", "reason": "missing data"}), 400
+
+@app.route('/api/premium-check', methods=['GET'])
+def premium_check():
+    phone = request.args.get("phone")
+    if is_premium(phone):
+        return jsonify({"premium": True})
+    return jsonify({"premium": False})
+
+@app.route('/api/message', methods=['POST'])
+def receive_message():
+    data = request.json
+    message = data.get("message")
+    phone = data.get("phone")
+
+    if is_spammy(message):
+        return jsonify({"status": "blocked", "reason": "spam detected"}), 403
+
+    return jsonify({"status": "received", "message": message})
+
+# === Admin command handler ===
+
 def handle_admin_command(command_text: str, sender_phone: str) -> str:
     parts = command_text.strip().split()
     command = parts[0].lower()
@@ -189,15 +233,4 @@ def handle_admin_command(command_text: str, sender_phone: str) -> str:
 
     if command == "/withdraw" and len(parts) == 2:
         try:
-            amount = float(parts[1])
-        except ValueError:
-            return "❌ Invalid amount format."
-        return f"💸 ₦{amount} withdrawn." if withdraw_from_vault(amount) else "❌ Insufficient vault balance."
-
-    return "❓ Unknown admin command."
-
-
-# === App Start ===
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+            amount
