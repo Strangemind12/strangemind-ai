@@ -1,5 +1,3 @@
-# game.py - Game logic for Strangemind AI
-
 import datetime
 from pymongo import MongoClient
 from config import MONGO_URI
