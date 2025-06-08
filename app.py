@@ -1,3 +1,4 @@
+from utils import shorten_link, save_contact, save_activity
 import os
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
