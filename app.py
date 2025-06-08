@@ -3,7 +3,6 @@ from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 
-# Your imports for scraping, utils, configs, premium user model, abuse detection
 from scraper import aggregate_search
 from utils import shorten_link, youtube_search, is_admin, get_vault_balance, withdraw_from_vault
 from config import MONGO_URI, ADMIN_PHONE, NIGERIA_MONTHLY_PRICE
@@ -18,10 +17,10 @@ db = client.strangemindDB
 users_collection = db.contacts
 vault_collection = db.vault
 
-# === Helper functions ===
+# Helper functions (send_message, grant_premium, revoke_premium, check_premium) 
+# can either be here or imported from a separate helper module if preferred
 
 def send_message(to_phone: str, message: str):
-    # Hook your WhatsApp or Gupshup API here
     print(f"[Message to {to_phone}]: {message}")
 
 def grant_premium(phone: str, days: int = 30):
@@ -55,7 +54,7 @@ def check_premium(phone: str) -> bool:
         revoke_premium(phone)
     return False
 
-# === Routes from your first app ===
+# === Routes ===
 
 @app.route('/')
 def home():
@@ -64,13 +63,12 @@ def home():
 @app.route('/search', methods=['GET'])
 def search_movie_api():
     query = request.args.get('query')
-    phone = request.args.get('phone')  # for premium check
+    phone = request.args.get('phone')
 
     if not query:
         return jsonify({"error": "Missing 'query' parameter"}), 400
 
     is_user_premium = phone and check_premium(phone)
-
     raw_results = aggregate_search(query, os.getenv("TMDB_API_KEY"))
     monetized_results = [
         {
@@ -146,12 +144,11 @@ def webhook():
             send_message(phone, "\n\n".join(replies) if replies else "🙁 No results found.")
             return jsonify({"status": "search processed"}), 200
 
-        # Otherwise admin commands
+        # Admin commands
         response = handle_admin_command(message, phone)
         send_message(phone, response)
         return jsonify({"status": "command processed"}), 200
 
-    # Default reply for non-command
     send_message(phone, "📽 Send `/search movie name` to get links + trailers!")
     return jsonify({"status": "idle"}), 200
 
@@ -171,8 +168,6 @@ def payment_webhook():
         return jsonify({"status": "premium granted"}), 200
 
     return jsonify({"error": "Insufficient payment"}), 400
-
-# === Your second app's additional API endpoints ===
 
 @app.route('/api/payment-webhook', methods=['POST'])
 def api_payment_webhook():
@@ -205,8 +200,6 @@ def receive_message():
 
     return jsonify({"status": "received", "message": message})
 
-# === Admin command handler ===
-
 def handle_admin_command(command_text: str, sender_phone: str) -> str:
     parts = command_text.strip().split()
     command = parts[0].lower()
@@ -233,4 +226,16 @@ def handle_admin_command(command_text: str, sender_phone: str) -> str:
 
     if command == "/withdraw" and len(parts) == 2:
         try:
-            amount
+            amount = float(parts[1])
+        except ValueError:
+            return "❌ Invalid amount specified."
+        success = withdraw_from_vault(amount)
+        if success:
+            return f"✅ Withdrawn ₦{amount} from vault."
+        else:
+            return "❌ Insufficient vault balance."
+
+    return "❓ Unknown admin command."
+
+if __name__ == '__main__':
+    app.run(debug=True, port=int(os.getenv("PORT", 5000)))
