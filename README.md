@@ -1,2 +1,2 @@
-# strangemind-ai
-24/7 WhatsApp Business AI for movies, food, games, &amp; more
+# Strangemind AI
+A 24/7 WhatsApp Business AI bot for movies, food, games, and more.
