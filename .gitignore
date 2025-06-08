@@ -1,26 +1,31 @@
-# Ignore Python cache and bytecode
+# Python cache files
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Environment variables
+.env
+
+# VSCode settings folder
+.vscode/
+
+# MacOS system files
+.DS_Store
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Pytest cache
+.cache/
+
+# Byte-compiled / optimized / DLL files
 *.pyo
 *.pyd
 
-# Ignore environment variables file
-.env
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
 
-# Ignore virtual environment folders
-venv/
-env/
-
-# Ignore logs
-*.log
-
-# Ignore system files
-.DS_Store
-Thumbs.db
-
-# Ignore IDE/editor folders
-.vscode/
-.idea/
-
-# Ignore node_modules (if any Node parts)
-node_modules/
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
