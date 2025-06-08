@@ -1,4 +1,6 @@
-import os import requests from datetime import datetime, timedelta from collections import defaultdict from pymongo import MongoClient from config import MONGO_URI, ADMIN_PHONE
+utils/google_scraper.py
+
+import os import requests from bs4 import BeautifulSoup from datetime import datetime, timedelta from collections import defaultdict from pymongo import MongoClient from config import MONGO_URI, ADMIN_PHONE
 
 --- MongoDB Setup ---
 
@@ -34,13 +36,13 @@ def get_vault_balance(phone: str) -> float: vault = vault_collection.find_one({"
 
 def withdraw_from_vault(phone: str, amount: float) -> bool: vault = vault_collection.find_one({"user": phone}) if vault and vault.get("balance", 0) >= amount: vault_collection.update_one({"user": phone}, {"$inc": {"balance": -amount}}) return True return False
 
-def is_admin(phone: str) -> bool: # Use config ADMIN_PHONE if set; else fallback to your dummy "admin" if ADMIN_PHONE: return phone == ADMIN_PHONE return phone == "admin"
+def is_admin(phone: str) -> bool: if ADMIN_PHONE: return phone == ADMIN_PHONE return phone == "admin"
 
 --- YouTube Search ---
 
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
-def youtube_search(query: str, max_results=3): if not YOUTUBE_API_KEY: # Fallback dummy search if no API key provided return [{"url": f"https://youtube.com/watch?v=dQw4w9WgXcQ&search={query}"}]
+def youtube_search(query: str, max_results=3): if not YOUTUBE_API_KEY: return [{"url": f"https://youtube.com/watch?v=dQw4w9WgXcQ&search={query}"}]
 
 url = "https://www.googleapis.com/youtube/v3/search"
 params = {
@@ -72,4 +74,20 @@ return results
 def save_contact(phone, name, users_collection): existing = users_collection.find_one({"phone": phone}) if not existing: users_collection.insert_one({ "phone": phone, "name": name or "Unknown", "joined": datetime.utcnow(), "is_premium": False, "referral_code": None, "referred_by": None })
 
 def save_activity(phone, action, data, history_collection): history_collection.insert_one({ "phone": phone, "action": action, "data": data, "timestamp": datetime.utcnow() })
+
+--- Google Scraper ---
+
+def google_direct_links(query: str, limit: int = 5) -> list: search_query = f"{query} site:drive.google.com OR site:mediafire.com OR site:mega.nz download" headers = {"User-Agent": "Mozilla/5.0"} res = requests.get(f"https://www.google.com/search?q={search_query}", headers=headers)
+
+soup = BeautifulSoup(res.text, "html.parser")
+results = []
+
+for g in soup.select(".tF2Cxc"):
+    link = g.select_one("a")
+    title = g.select_one("h3")
+    if link and title:
+        results.append({"title": title.text.strip(), "link": link["href"]})
+        if len(results) >= limit:
+            break
+return results
 
