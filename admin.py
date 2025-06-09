@@ -17,6 +17,7 @@ admin_settings = {
     "abuse_log": []
 }
 
+
 def send_admin_announcement(phone: str, message: str):
     """
     Sends an announcement from the admin to a user via WhatsApp API.
@@ -29,7 +30,7 @@ def send_admin_announcement(phone: str, message: str):
         "🚀 Stay sharp. Stay curious.\n"
         "– Team Strangemind"
     )
-    send_message(phone, full_message)
+    send_message(phone, full_message)  # Make sure send_message is implemented elsewhere
 
 
 def get_uptime():
@@ -108,7 +109,7 @@ def handle_admin_command(phone, command):
         return "🚨 Abuse Reports:\n" + "\n".join(admin_settings["abuse_log"])
 
     elif cmd == "/groups":
-        # You should keep track of groups in DB or memory
+        # Placeholder: You should keep track of groups in DB or memory in production
         return "👥 Active groups: [Wired from DB in production]"
 
     elif cmd == "/referral":
@@ -120,7 +121,8 @@ def handle_admin_command(phone, command):
     elif cmd == "/setname":
         if len(parts) < 3:
             return "❌ Usage: /setname <phone> <name>"
-        users_collection.update_one({"phone": parts[1]}, {"$set": {"name": ' '.join(parts[2:])}})
+        new_name = ' '.join(parts[2:])
+        users_collection.update_one({"phone": parts[1]}, {"$set": {"name": new_name}})
         return f"✏️ Name updated for {parts[1]}"
 
     elif cmd == "/resetvault":
