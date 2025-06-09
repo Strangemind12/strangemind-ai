@@ -247,3 +247,9 @@ def webhook():
 
 if __name__ == '__main__':
     app.run(debug=True, port=int(os.getenv("PORT", 5000)))
+from utils.admin_controls import (
+    lock_vault, unlock_vault, lock_withdraw, unlock_withdraw,
+    is_vault_locked, is_withdraw_locked
+)
+from utils.helpers import is_admin  # your existing admin checker
+from your_db_module import users_collection, groups_collection  # adjust to your actual db collections
