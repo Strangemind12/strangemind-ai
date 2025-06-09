@@ -1,69 +1,152 @@
-# admin/commands.py
+# admin_controller.py
 
-from utils import is_admin, is_premium_user, get_vault_balance, withdraw_from_vault
-from database import users_collection, vault_collection, history_collection
-from datetime import datetime
-import time
 import os
+import time
 import platform
 import psutil
+from datetime import datetime
+from pymongo import MongoClient
+from config import MONGO_URI, ADMIN_PHONE
+from utils.vault import get_vault_balance, withdraw_from_vault
+from utils.premium import toggle_premium_user, is_premium_user
+from utils.save import force_autosave, toggle_autosave
+from whatsapp import send_message
 
-# System uptime tracker
+client = MongoClient(MONGO_URI)
+db = client.strangemindDB
+users_collection = db.users
+group_collection = db.groups
+ads_collection = db.ads
+messages_collection = db.messages
+errors_collection = db.errors
+
 START_TIME = time.time()
 
-# In-memory admin settings (replace with DB later)
-admin_settings = {
-    "autosave": True,
-    "abuse_log": []
-}
+# Admin-only check
+def is_admin(phone):
+    return phone == ADMIN_PHONE
 
+# Lock & Unlock users/groups
+def lock_user(phone):
+    users_collection.update_one({"phone": phone}, {"$set": {"locked": True}})
 
-def send_admin_announcement(phone: str, message: str):
-    """
-    Sends an announcement from the admin to a user via WhatsApp API.
-    """
-    full_message = (
-        "📣 *Admin Broadcast from Strangemind AI HQ* 📣\n\n"
-        f"🔔 Message from Command:\n"
-        f"_{message}_\n\n"
-        "If you have questions or feedback, just reply or tag @strangemind AI.\n\n"
-        "🚀 Stay sharp. Stay curious.\n"
-        "– Team Strangemind"
-    )
-    send_message(phone, full_message)  # Make sure send_message is implemented elsewhere
+def unlock_user(phone):
+    users_collection.update_one({"phone": phone}, {"$set": {"locked": False}})
 
+def lock_group(group_id):
+    group_collection.update_one({"group_id": group_id}, {"$set": {"locked": True}})
 
+def unlock_group(group_id):
+    group_collection.update_one({"group_id": group_id}, {"$set": {"locked": False}})
+
+# Analytics & Stats
+def total_users():
+    return users_collection.count_documents({})
+
+def total_groups():
+    return group_collection.count_documents({})
+
+def get_active_users():
+    return users_collection.count_documents({"locked": {"$ne": True}})
+
+def get_locked_users():
+    return users_collection.count_documents({"locked": True})
+
+def get_click_stats():
+    return messages_collection.aggregate([
+        {"$match": {"shortened": True}},
+        {"$group": {"_id": None, "total": {"$sum": 1}}}
+    ])
+
+# Errors
+def log_error(phone, error):
+    errors_collection.insert_one({
+        "phone": phone,
+        "error": str(error),
+        "timestamp": datetime.utcnow()
+    })
+
+def get_recent_errors(limit=10):
+    return list(errors_collection.find().sort("timestamp", -1).limit(limit))
+
+# Autosave controls
+def toggle_autosave_user(phone):
+    toggle_autosave(phone)
+    return True
+
+def trigger_manual_save():
+    return force_autosave()
+
+# Vault / Earnings
+def get_user_earnings(phone):
+    user = users_collection.find_one({"phone": phone})
+    if user and user.get("locked", False):
+        return 0.00
+    return user.get("balance", 0.00) if user else 0.00
+
+def show_earning_placeholder():
+    return "💸 Earnings: Coming Soon | Under Upgrade 💻"
+
+# System uptime
 def get_uptime():
     uptime_seconds = time.time() - START_TIME
     hours, remainder = divmod(int(uptime_seconds), 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"🕒 Uptime: {hours}h {minutes}m {seconds}s"
 
+# Broadcast
+def send_admin_announcement(phone: str, message: str):
+    full_message = (
+        "📣 *Admin Broadcast from Strangemind AI HQ* 📣\n\n"
+        f"🔔 Message:\n"
+        f"_{message}_\n\n"
+        "Reply or tag @strangemind AI if you need support.\n"
+        "– Team Strangemind"
+    )
+    send_message(phone, full_message)
 
-def handle_admin_command(phone, command):
+def broadcast_message(text, target="all"):
+    ads_collection.insert_one({
+        "text": text,
+        "target": target,
+        "created_at": datetime.utcnow(),
+        "status": "pending"
+    })
+    return True
+
+# Master Admin Command Processor
+def process_admin_command(phone, message):
     if not is_admin(phone):
-        return "⛔ You are not authorized to use admin commands."
+        return "⛔ You are not authorized."
 
-    parts = command.strip().split()
+    parts = message.strip().split()
     cmd = parts[0].lower()
 
-    if cmd == "/autosave":
-        admin_settings["autosave"] = not admin_settings["autosave"]
-        return f"💾 Auto-save is now {'enabled' if admin_settings['autosave'] else 'disabled'}."
+    if cmd == "/lock" and len(parts) > 2 and parts[1] == "user":
+        lock_user(parts[2])
+        return "🔒 User locked."
 
-    elif cmd == "/status":
-        return f"✅ Bot is active\n{get_uptime()}\nAuto-save: {'ON' if admin_settings['autosave'] else 'OFF'}"
+    if cmd == "/unlock" and len(parts) > 2 and parts[1] == "user":
+        unlock_user(parts[2])
+        return "🔓 User unlocked."
 
-    elif cmd == "/vault":
-        if len(parts) < 2:
-            return "❌ Usage: /vault <phone>"
-        target = parts[1]
-        balance = get_vault_balance(target)
-        return f"💰 Vault for {target}: {balance} coins"
+    if cmd == "/ban" and len(parts) == 2:
+        users_collection.update_one({"phone": parts[1]}, {"$set": {"banned": True}})
+        return f"🚫 User {parts[1]} banned."
 
-    elif cmd == "/userinfo":
-        if len(parts) < 2:
-            return "❌ Usage: /userinfo <phone>"
+    if cmd == "/unban" and len(parts) == 2:
+        users_collection.update_one({"phone": parts[1]}, {"$unset": {"banned": ""}})
+        return f"✅ User {parts[1]} unbanned."
+
+    if cmd == "/premium" and len(parts) == 2:
+        users_collection.update_one({"phone": parts[1]}, {"$set": {"is_premium": True}}, upsert=True)
+        return f"🌟 User {parts[1]} upgraded to Premium."
+
+    if cmd == "/vault" and len(parts) == 2:
+        bal = get_vault_balance(parts[1])
+        return f"💰 Vault Balance for {parts[1]}: {bal} coins"
+
+    if cmd == "/userinfo" and len(parts) == 2:
         user = users_collection.find_one({"phone": parts[1]})
         if not user:
             return "❌ User not found."
@@ -75,64 +158,34 @@ def handle_admin_command(phone, command):
             f"Joined: {user.get('joined')}"
         )
 
-    elif cmd == "/premium":
-        if len(parts) < 2:
-            return "❌ Usage: /premium <phone>"
-        users_collection.update_one({"phone": parts[1]}, {"$set": {"is_premium": True}}, upsert=True)
-        return f"🌟 {parts[1]} is now a premium user."
-
-    elif cmd == "/broadcast":
-        msg = command.replace("/broadcast", "").strip()
+    if cmd == "/broadcast":
+        msg = message.replace("/broadcast", "").strip()
         if not msg:
-            return "❌ Message is empty."
-        # Loop through all users and send the announcement
+            return "⚠️ Message is empty."
         users = users_collection.find({})
         for user in users:
             send_admin_announcement(user.get("phone"), msg)
         return f"📢 Broadcast sent to {users_collection.count_documents({})} users."
 
-    elif cmd == "/ban":
-        if len(parts) < 2:
-            return "❌ Usage: /ban <phone>"
-        users_collection.update_one({"phone": parts[1]}, {"$set": {"banned": True}})
-        return f"🔒 User {parts[1]} has been banned."
+    if cmd == "/stats":
+        return f"👥 Users: {total_users()} | 👪 Groups: {total_groups()} | 🔓 Active: {get_active_users()} | 🔒 Locked: {get_locked_users()}"
 
-    elif cmd == "/unban":
-        if len(parts) < 2:
-            return "❌ Usage: /unban <phone>"
-        users_collection.update_one({"phone": parts[1]}, {"$unset": {"banned": ""}})
-        return f"✅ User {parts[1]} is unbanned."
+    if cmd == "/save":
+        trigger_manual_save()
+        return "💾 Manual save triggered."
 
-    elif cmd == "/abuse log":
-        if not admin_settings["abuse_log"]:
-            return "📭 No abuse reports yet."
-        return "🚨 Abuse Reports:\n" + "\n".join(admin_settings["abuse_log"])
+    if cmd == "/autosave":
+        toggle_autosave(ADMIN_PHONE)
+        return "🔄 Toggled auto-save setting."
 
-    elif cmd == "/groups":
-        # Placeholder: You should keep track of groups in DB or memory in production
-        return "👥 Active groups: [Wired from DB in production]"
+    if cmd == "/errors":
+        errors = get_recent_errors()
+        return "\n".join([f"{e['timestamp']} - {e['error']}" for e in errors]) or "📭 No recent errors."
 
-    elif cmd == "/referral":
-        if len(parts) < 2:
-            return "❌ Usage: /referral <phone>"
-        user = users_collection.find_one({"phone": parts[1]})
-        return f"📣 Referred by: {user.get('referred_by', 'None')}"
-
-    elif cmd == "/setname":
-        if len(parts) < 3:
-            return "❌ Usage: /setname <phone> <name>"
-        new_name = ' '.join(parts[2:])
-        users_collection.update_one({"phone": parts[1]}, {"$set": {"name": new_name}})
-        return f"✏️ Name updated for {parts[1]}"
-
-    elif cmd == "/resetvault":
-        if len(parts) < 2:
-            return "❌ Usage: /resetvault <phone>"
-        vault_collection.update_one({"user": parts[1]}, {"$set": {"balance": 0}}, upsert=True)
-        return f"💸 Vault reset for {parts[1]}"
-
-    elif cmd == "/uptime":
+    if cmd == "/uptime":
         return get_uptime()
 
-    else:
-        return f"❓ Unknown admin command: {cmd}"
+    if cmd == "/earnings":
+        return show_earning_placeholder()
+
+    return "🧭 Command received, but unrecognized. Please check syntax."
