@@ -1,105 +1,136 @@
-# Imports
+# admin/commands.py
+
+from utils import is_admin, is_premium_user, get_vault_balance, withdraw_from_vault
+from database import users_collection, vault_collection, history_collection
+from datetime import datetime
+import time
 import os
-from scraper import aggregate_search, youtube_search
-from utils import send_whatsapp_message  # Your existing WhatsApp send function
+import platform
+import psutil
 
-from pymongo import MongoClient
-from config import MONGO_URI, ADMIN_PHONE
+# System uptime tracker
+START_TIME = time.time()
 
-# MongoDB setup
-client = MongoClient(MONGO_URI)
-db = client.strangemindDB
-users_collection = db.contacts
-groups_collection = db.groups
-premium_collection = db.premium_users
+# In-memory admin settings (replace with DB later)
+admin_settings = {
+    "autosave": True,
+    "abuse_log": []
+}
 
-ADMIN_PHONE = ADMIN_PHONE.strip()
-
-# Premium user management functions
-def is_admin(phone: str):
-    """Checks if the sender is the main admin."""
-    return phone == ADMIN_PHONE
-
-def grant_premium(phone: str, is_group=False):
-    """Grants premium access to a user or group."""
-    collection = groups_collection if is_group else users_collection
-    result = collection.update_one(
-        {"phone": phone},
-        {"$set": {"is_premium": True}},
-        upsert=True
+def send_admin_announcement(phone: str, message: str):
+    """
+    Sends an announcement from the admin to a user via WhatsApp API.
+    """
+    full_message = (
+        "📣 *Admin Broadcast from Strangemind AI HQ* 📣\n\n"
+        f"🔔 Message from Command:\n"
+        f"_{message}_\n\n"
+        "If you have questions or feedback, just reply or tag @strangemind AI.\n\n"
+        "🚀 Stay sharp. Stay curious.\n"
+        "– Team Strangemind"
     )
-    premium_collection.update_one(
-        {"phone": phone},
-        {"$set": {"premium": True}},
-        upsert=True
-    )
-    return result.modified_count > 0
+    send_message(phone, full_message)
 
-def revoke_premium(phone: str, is_group=False):
-    """Revokes premium access from a user or group."""
-    collection = groups_collection if is_group else users_collection
-    result = collection.update_one(
-        {"phone": phone},
-        {"$set": {"is_premium": False}}
-    )
-    premium_collection.update_one(
-        {"phone": phone},
-        {"$set": {"premium": False}},
-        upsert=True
-    )
-    return result.modified_count > 0
 
-def check_premium(phone: str, is_group=False):
-    """Checks if a user or group has premium status."""
-    collection = groups_collection if is_group else users_collection
-    record = collection.find_one({"phone": phone})
-    fallback = premium_collection.find_one({"phone": phone})
+def get_uptime():
+    uptime_seconds = time.time() - START_TIME
+    hours, remainder = divmod(int(uptime_seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"🕒 Uptime: {hours}h {minutes}m {seconds}s"
 
-    if record and record.get("is_premium", False):
-        return True
-    elif fallback and fallback.get("premium", False):
-        return True
-    return False
 
-# Your Movie + YouTube integration handler
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+def handle_admin_command(phone, command):
+    if not is_admin(phone):
+        return "⛔ You are not authorized to use admin commands."
 
-def handle_movie_command(user_phone, query):
-    # Check premium status before processing heavy requests (optional but recommended)
-    if not check_premium(user_phone):
-        send_whatsapp_message(user_phone, "⚠️ This feature is for premium users only. Please upgrade to access movie searches and trailers.")
-        return
+    parts = command.strip().split()
+    cmd = parts[0].lower()
 
-    # Aggregate movie + torrent + TMDB results
-    movie_results = aggregate_search(query, tmdb_api_key=TMDB_API_KEY)
-    # Get YouTube trailers
-    trailer_results = youtube_search(query, max_results=3, youtube_api_key=YOUTUBE_API_KEY)
+    if cmd == "/autosave":
+        admin_settings["autosave"] = not admin_settings["autosave"]
+        return f"💾 Auto-save is now {'enabled' if admin_settings['autosave'] else 'disabled'}."
 
-    # Build response message
-    message = f"🎬 Results for \"{query}\":\n\n"
-    for idx, movie in enumerate(movie_results[:5], 1):
-        message += f"{idx}️⃣ {movie['title']}\nLink: {movie['link']}\nSource: {movie['source']}\n\n"
+    elif cmd == "/status":
+        return f"✅ Bot is active\n{get_uptime()}\nAuto-save: {'ON' if admin_settings['autosave'] else 'OFF'}"
 
-    if trailer_results:
-        message += "🎥 YouTube Trailers:\n"
-        for trailer in trailer_results:
-            message += f"- {trailer['title']}: {trailer['url']}\n"
+    elif cmd == "/vault":
+        if len(parts) < 2:
+            return "❌ Usage: /vault <phone>"
+        target = parts[1]
+        balance = get_vault_balance(target)
+        return f"💰 Vault for {target}: {balance} coins"
 
-    send_whatsapp_message(user_phone, message)
+    elif cmd == "/userinfo":
+        if len(parts) < 2:
+            return "❌ Usage: /userinfo <phone>"
+        user = users_collection.find_one({"phone": parts[1]})
+        if not user:
+            return "❌ User not found."
+        return (
+            f"📇 User Info:\n"
+            f"Name: {user.get('name')}\n"
+            f"Phone: {user.get('phone')}\n"
+            f"Premium: {user.get('is_premium')}\n"
+            f"Joined: {user.get('joined')}"
+        )
 
-# Example usage to test premium management (optional)
-if __name__ == "__main__":
-    test_user = "+2348012345678"
+    elif cmd == "/premium":
+        if len(parts) < 2:
+            return "❌ Usage: /premium <phone>"
+        users_collection.update_one({"phone": parts[1]}, {"$set": {"is_premium": True}}, upsert=True)
+        return f"🌟 {parts[1]} is now a premium user."
 
-    print("✅ Granting premium to test user...")
-    print(grant_premium(test_user))  # True if success
+    elif cmd == "/broadcast":
+        msg = command.replace("/broadcast", "").strip()
+        if not msg:
+            return "❌ Message is empty."
+        # Loop through all users and send the announcement
+        users = users_collection.find({})
+        for user in users:
+            send_admin_announcement(user.get("phone"), msg)
+        return f"📢 Broadcast sent to {users_collection.count_documents({})} users."
 
-    print("🔍 Checking premium status...")
-    print(check_premium(test_user))  # True
+    elif cmd == "/ban":
+        if len(parts) < 2:
+            return "❌ Usage: /ban <phone>"
+        users_collection.update_one({"phone": parts[1]}, {"$set": {"banned": True}})
+        return f"🔒 User {parts[1]} has been banned."
 
-    print("❌ Revoking premium...")
-    print(revoke_premium(test_user))  # True
+    elif cmd == "/unban":
+        if len(parts) < 2:
+            return "❌ Usage: /unban <phone>"
+        users_collection.update_one({"phone": parts[1]}, {"$unset": {"banned": ""}})
+        return f"✅ User {parts[1]} is unbanned."
 
-    print("🔍 Re-checking premium...")
-    print(check_premium(test_user))  # False
+    elif cmd == "/abuse log":
+        if not admin_settings["abuse_log"]:
+            return "📭 No abuse reports yet."
+        return "🚨 Abuse Reports:\n" + "\n".join(admin_settings["abuse_log"])
+
+    elif cmd == "/groups":
+        # You should keep track of groups in DB or memory
+        return "👥 Active groups: [Wired from DB in production]"
+
+    elif cmd == "/referral":
+        if len(parts) < 2:
+            return "❌ Usage: /referral <phone>"
+        user = users_collection.find_one({"phone": parts[1]})
+        return f"📣 Referred by: {user.get('referred_by', 'None')}"
+
+    elif cmd == "/setname":
+        if len(parts) < 3:
+            return "❌ Usage: /setname <phone> <name>"
+        users_collection.update_one({"phone": parts[1]}, {"$set": {"name": ' '.join(parts[2:])}})
+        return f"✏️ Name updated for {parts[1]}"
+
+    elif cmd == "/resetvault":
+        if len(parts) < 2:
+            return "❌ Usage: /resetvault <phone>"
+        vault_collection.update_one({"user": parts[1]}, {"$set": {"balance": 0}}, upsert=True)
+        return f"💸 Vault reset for {parts[1]}"
+
+    elif cmd == "/uptime":
+        return get_uptime()
+
+    else:
+        return f"❓ Unknown admin command: {cmd}"
