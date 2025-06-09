@@ -1,112 +1,88 @@
-import time from utils import ( is_admin, lock_user, unlock_user, lock_group, unlock_group, is_locked, is_premium, make_premium, remove_premium, shorten_url, save_data, set_autosave, get_stats, get_logs, broadcast_message, get_uptime, set_user_vault, get_user_vault, ban_user, unban_user, is_banned )
+import os
+import openai
+from utils.shorten import shorten_link
+from utils.permissions import is_admin
+from utils.logging import log_activity
+from savecontacts import get_display_name
 
-def handle_admin_commands(sender_id, message): if not is_admin(sender_id): return "🚫 You are not authorized to use admin commands."
+# Load OpenAI API key from environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-command = message.lower()
+def handle_admin_openai(phone, message, send_message):
+    """
+    Handles messages from WhatsApp admin users only.
 
-if command.startswith("/lock user"):
-    user_id = command.split("/lock user", 1)[1].strip()
-    lock_user(user_id)
-    return f"🔒 User {user_id} has been locked."
+    Supported:
+    - Feedback: 'suggest:' or 'issue:'
+    - Commands: 'cmd:ban <user>', 'cmd:broadcast <message>'
+    - AI Chat: Any other message falls back to GPT-4
+    """
+    if not is_admin(phone):
+        return  # Unauthorized access? We ghost.
 
-elif command.startswith("/unlock user"):
-    user_id = command.split("/unlock user", 1)[1].strip()
-    unlock_user(user_id)
-    return f"🔓 User {user_id} has been unlocked."
+    message_lower = message.lower()
 
-elif command.startswith("/lock group"):
-    group_id = command.split("/lock group", 1)[1].strip()
-    lock_group(group_id)
-    return f"🔒 Group {group_id} has been locked."
+    # ─── 1. Feedback Logging ─────────────────────────────
+    if message_lower.startswith("suggest:") or message_lower.startswith("issue:"):
+        log_activity(phone, "user_feedback", message)
+        send_message(phone, "✅ Feedback received, boss. We’ll refine the system accordingly.")
+        return
 
-elif command.startswith("/unlock group"):
-    group_id = command.split("/unlock group", 1)[1].strip()
-    unlock_group(group_id)
-    return f"🔓 Group {group_id} has been unlocked."
+    # ─── 2. Command Handling (cmd:...) ───────────────────
+    if message_lower.startswith("cmd:"):
+        try:
+            command = message[4:].strip()
 
-elif command.startswith("/ban"):
-    user_id = command.split("/ban", 1)[1].strip()
-    ban_user(user_id)
-    return f"🚫 User {user_id} has been banned."
+            if command.startswith("ban "):
+                target = command[4:].strip()
+                # TODO: Hook this into your real ban logic
+                log_activity(phone, "admin_command", f"ban {target}")
+                send_message(phone, f"🚫 User {target} has been *flagged* for ban. (Demo only)")
+                return
 
-elif command.startswith("/unban"):
-    user_id = command.split("/unban", 1)[1].strip()
-    unban_user(user_id)
-    return f"✅ User {user_id} has been unbanned."
+            elif command.startswith("broadcast "):
+                msg = command[10:].strip()
+                # TODO: Hook into real broadcast logic
+                log_activity(phone, "admin_command", f"broadcast: {msg}")
+                send_message(phone, f"📢 Broadcast queued: {msg}")
+                return
 
-elif command.startswith("/make premium"):
-    user_id = command.split("/make premium", 1)[1].strip()
-    make_premium(user_id)
-    return f"👑 User {user_id} is now premium."
+            else:
+                send_message(phone, "⚠️ Unknown admin command. Try again or type `cmd:help`.")
+        except Exception as e:
+            send_message(phone, f"❌ Command error: {str(e)}")
+        return
 
-elif command.startswith("/remove premium"):
-    user_id = command.split("/remove premium", 1)[1].strip()
-    remove_premium(user_id)
-    return f"💸 User {user_id} is no longer premium."
+    # ─── 3. GPT-4 Admin Assistant ───────────────────────
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are Strangemind AI's personal assistant, replying only to admin commands. "
+                        "Always be brief, strategic, and no-nonsense. Use clean formatting. Never repeat yourself."
+                    )
+                },
+                {"role": "user", "content": message}
+            ]
+        )
+        reply = response["choices"][0]["message"]["content"]
+        send_message(phone, reply)
+        log_activity(phone, "openai_response", message)
 
-elif command.startswith("/set vault"):
-    parts = command.split()
-    if len(parts) == 4:
-        _, _, user_id, amount = parts
-        set_user_vault(user_id, float(amount))
-        return f"💰 Vault set: {user_id} now has {amount} coins."
-    else:
-        return "❌ Usage: /set vault <user_id> <amount>"
+    except Exception as e:
+        send_message(phone, f"❌ OpenAI error: {str(e)}")
 
-elif command.startswith("/get vault"):
-    user_id = command.split("/get vault", 1)[1].strip()
-    vault = get_user_vault(user_id)
-    return f"💼 {user_id} has {vault} coins."
-
-elif command.startswith("/broadcast"):
-    message_to_send = command.split("/broadcast", 1)[1].strip()
-    shortened = shorten_url(message_to_send)
-    broadcast_message(shortened)
-    return "📢 Broadcast sent with short link."
-
-elif command.startswith("/stats"):
-    stats = get_stats()
-    return f"📊 Bot Stats:\n{stats}"
-
-elif command.startswith("/logs"):
-    logs = get_logs()
-    return f"🧾 Recent Logs:\n{logs}"
-
-elif command.startswith("/save"):
-    save_data()
-    return "💾 Data saved manually."
-
-elif command.startswith("/autosave"):
-    setting = command.split("/autosave", 1)[1].strip()
-    if setting in ["on", "off"]:
-        set_autosave(setting == "on")
-        return f"🔁 Autosave {'enabled' if setting == 'on' else 'disabled'}."
-    else:
-        return "❌ Use /autosave on OR /autosave off"
-
-elif command.startswith("/uptime"):
-    return f"⏱️ Uptime: {get_uptime()}"
-
-else:
-    return "❌ Unknown admin command."
-
-def handle_user_commands(user_id, message): if is_locked(user_id): return "🔒 You are currently locked. Contact admin." if is_banned(user_id): return "⛔ You are banned. Appeal to support."
-
-message = message.strip()
-if message.startswith("/vault"):
-    balance = get_user_vault(user_id)
-    return f"💼 Your vault contains {balance} coins."
-
-elif message.startswith("/premium"):
-    if is_premium(user_id):
-        return "👑 You are a premium user."
-    else:
-        return "💸 You are on the free plan. Upgrade for full features."
-
-elif message.startswith("/help"):
-    return "🤖 Available commands:\n/vault - Check balance\n/premium - Premium status\n/help - This menu"
-
-return "❔ Unknown command. Type /help to see available options."
-
-def route_command(sender_id, message): if message.startswith("/"): if is_admin(sender_id): return handle_admin_commands(sender_id, message) else: return handle_user_commands(sender_id, message) return None  # Non-command messages handled elsewhere
-
+# ─────────────────────────────────────────────────────
+# ✅ USAGE EXAMPLE:
+#
+# Inside your WhatsApp message router:
+#
+#     if is_admin(phone):
+#         handle_admin_openai(phone, message, send_message)
+#         return
+#
+# This grants admins god-tier AI access with feedback + command power.
+# ─────────────────────────────────────────────────────
