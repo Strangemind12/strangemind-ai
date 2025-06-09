@@ -1,55 +1,113 @@
+from pymongo import MongoClient
 import os
 import openai
-from utils.shorten import shorten_link
-from utils.permissions import is_admin
-from utils.logging import log_activity
-from savecontacts import get_display_name
 
-# External DB references (assume imported or injected)
-from database import vault_collection, global_settings_collection
+# --- MongoDB Setup ---
+MONGO_URI = os.getenv("MONGO_URI")
+client = MongoClient(MONGO_URI)
+db = client.strangemindDB
 
-# Load OpenAI key
+vault_locks_collection = db.vault_locks
+withdraw_locks_collection = db.withdraw_locks
+vault_collection = db.vault_collection        # your main vault user data
+global_settings_collection = db.global_settings_collection  # for global settings like withdraw locks
+
+# --- OpenAI Setup ---
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# --- Utils imports ---
+from utils.helpers import is_admin
+from utils.your_user_collections import users_collection, groups_collection
+from utils.logging import log_activity
 
-def handle_admin(phone, message, send_message, is_group=False, group_id=None):
+# --- Vault Lock Controls ---
+def lock_vault(target: str):
+    vault_locks_collection.update_one({"target": target}, {"$set": {"locked": True}}, upsert=True)
+
+def unlock_vault(target: str):
+    vault_locks_collection.update_one({"target": target}, {"$set": {"locked": False}}, upsert=True)
+
+def is_vault_locked(target: str) -> bool:
+    lock = vault_locks_collection.find_one({"target": target})
+    return lock and lock.get("locked", False)
+
+# --- Withdraw Lock Controls ---
+def lock_withdraw(target: str):
+    withdraw_locks_collection.update_one({"target": target}, {"$set": {"locked": True}}, upsert=True)
+
+def unlock_withdraw(target: str):
+    withdraw_locks_collection.update_one({"target": target}, {"$set": {"locked": False}}, upsert=True)
+
+def is_withdraw_locked(target: str) -> bool:
+    lock = withdraw_locks_collection.find_one({"target": target})
+    return lock and lock.get("locked", False)
+
+# --- Global Withdraw Lock Toggle ---
+def set_global_withdraw_lock(lock: bool):
+    global_settings_collection.update_one({"setting": "withdrawal_lock"}, {"$set": {"value": lock}}, upsert=True)
+
+def get_global_withdraw_lock() -> bool:
+    setting = global_settings_collection.find_one({"setting": "withdrawal_lock"})
+    return setting and setting.get("value", False)
+
+# --- Admin Command Handler ---
+def handle_admin_commands(phone: str, message: str, send_message, is_group=False, group_id=None):
     if not is_admin(phone):
-        return  # 🕶️ Unauthorized
+        return  # Unauthorized access; silent fail or log if needed
 
     msg = message.strip()
     msg_lower = msg.lower()
-    tokens = msg_lower.split()
 
-    if not tokens:
-        send_message(phone, "⚠️ Empty admin command received.")
+    # Basic lock/unlock commands for vault and withdraw (target can be @user or @group)
+    if msg_lower.startswith("lock vault "):
+        target = msg.split()[-1]
+        lock_vault(target)
+        send_message(phone, f"🔒 Vault locked for {target}")
         return
 
-    # ───── 1. Feedback Commands ─────────────────────────
-    if msg_lower.startswith("suggest:") or msg_lower.startswith("issue:"):
-        log_activity(phone, "user_feedback", msg)
-        send_message(phone, "📝 Feedback logged. We'll refine accordingly.")
+    if msg_lower.startswith("unlock vault "):
+        target = msg.split()[-1]
+        unlock_vault(target)
+        send_message(phone, f"🔓 Vault unlocked for {target}")
         return
 
-    # ───── 2. CMD-Prefix Based Commands ─────────────────
-    if msg_lower.startswith("cmd:"):
-        handle_structured_admin_cmd(phone, msg[4:].strip(), send_message)
+    if msg_lower.startswith("lock withdraw "):
+        target = msg.split()[-1]
+        lock_withdraw(target)
+        send_message(phone, f"🚫 Withdrawals locked for {target}")
         return
 
-    # ───── 3. Slash Commands (/lockvault etc) ───────────
-    if tokens[0] in ["/lockvault", "/unlockvault"]:
-        return handle_vault_control(phone, tokens, send_message, is_group, group_id)
+    if msg_lower.startswith("unlock withdraw "):
+        target = msg.split()[-1]
+        unlock_withdraw(target)
+        send_message(phone, f"✅ Withdrawals unlocked for {target}")
+        return
 
-    elif tokens[0] in ["/withdrawlock", "/withdrawunlock"]:
-        return handle_global_withdrawal(phone, tokens[0], send_message, is_group, group_id)
+    # Global withdrawal lock/unlock commands - example: /withdrawlock or /withdrawunlock
+    if msg_lower == "/withdrawlock":
+        set_global_withdraw_lock(True)
+        send_message(phone, "🚫 Global withdrawal is LOCKED.")
+        return
 
-    # ───── 4. GPT-4 AI Assistant Fallback ───────────────
+    if msg_lower == "/withdrawunlock":
+        set_global_withdraw_lock(False)
+        send_message(phone, "✅ Global withdrawals are UNLOCKED.")
+        return
+
+    # Stats command for quick DB insights
+    if msg_lower == "stats":
+        total_users = users_collection.count_documents({})
+        total_groups = groups_collection.count_documents({})
+        send_message(phone, f"📊 Total users: {total_users}\n📊 Total groups: {total_groups}")
+        return
+
+    # Fallback to OpenAI GPT-4 for admin questions or complex commands
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": (
-                    "You are Strangemind AI’s assistant for admin users only. Be brief, intelligent, and strategic. "
-                    "Never give long-winded explanations. Avoid repetition. Format cleanly."
+                    "You are Strangemind AI’s assistant for admin users only. Keep it brief and professional."
                 )},
                 {"role": "user", "content": msg}
             ]
@@ -61,57 +119,23 @@ def handle_admin(phone, message, send_message, is_group=False, group_id=None):
     except Exception as e:
         send_message(phone, f"❌ OpenAI error: {str(e)}")
 
+# --- Check Lock Status for User or Group ---
+def check_lock_status(phone: str, group_id: str = None):
+    # Check vault locks
+    if is_vault_locked(phone) or (group_id and is_vault_locked(group_id)):
+        return "🔒 Vault access is currently locked. Please contact admin."
 
-# ───── Helper: Structured cmd: Commands ────────────────
-def handle_structured_admin_cmd(phone, command, send_message):
-    try:
-        if command.startswith("ban "):
-            target = command[4:].strip()
-            log_activity(phone, "admin_command", f"ban {target}")
-            send_message(phone, f"🚫 User {target} flagged for ban (simulation).")
-            return
+    # Check withdraw locks (both user, group, and global)
+    if is_withdraw_locked(phone) or (group_id and is_withdraw_locked(group_id)) or get_global_withdraw_lock():
+        return "🚫 Withdrawals are currently locked. Please contact admin."
 
-        elif command.startswith("broadcast "):
-            msg = command[10:].strip()
-            log_activity(phone, "admin_command", f"broadcast: {msg}")
-            send_message(phone, f"📢 Broadcast sent: {msg}")
-            return
+    return None
 
-        else:
-            send_message(phone, "⚠️ Unknown admin command. Use `cmd:help` for available ops.")
-
-    except Exception as e:
-        send_message(phone, f"❌ Command error: {str(e)}")
-
-
-# ───── Helper: Lock/Unlock Vault ───────────────────────
-def handle_vault_control(phone, tokens, send_message, is_group, group_id):
-    if len(tokens) < 2 or not tokens[1].startswith("@"):
-        send_message(phone, "⚠️ Usage: `/lockvault @user123` or `/unlockvault @group456`")
-        return
-
-    target_id = tokens[1][1:]  # strip '@'
-    is_lock = tokens[0] == "/lockvault"
-
-    vault_collection.update_one(
-        {"user": target_id},
-        {"$set": {"vault_locked": is_lock}},
-        upsert=True
-    )
-
-    response = f"🔐 Vault has been {'🔒 locked' if is_lock else '🔓 unlocked'} for `{tokens[1]}`"
-    send_message(group_id if is_group else phone, response)
-
-
-# ───── Helper: Global Withdrawal Toggle ────────────────
-def handle_global_withdrawal(phone, command, send_message, is_group, group_id):
-    is_lock = command == "/withdrawlock"
-    global_settings_collection.update_one(
-        {"setting": "withdrawal_lock"},
-        {"$set": {"value": is_lock}},
-        upsert=True
-    )
-    status_text = (
-        "🚫 Global withdrawal is *LOCKED*." if is_lock else "✅ Withdrawals are *UNLOCKED* globally."
-    )
-    send_message(group_id if is_group else phone, status_text)
+# Usage in your message processing pipeline:
+# response = handle_admin_commands(phone, message, send_message, is_group, group_id)
+# if response is not None:
+#     return
+# lock_message = check_lock_status(phone, group_id)
+# if lock_message:
+#     send_message(phone, lock_message)
+#     return
