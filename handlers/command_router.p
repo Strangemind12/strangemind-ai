@@ -1,21 +1,52 @@
-def handle_movie_command(phone, query):
-    from urllib.parse import quote_plus
+# handlers/command_router.py
 
-    encoded_query = quote_plus(query.strip())
+from handlers.admin_commands import handle_admin_command
+from handlers.movie_handler import handle_movie_command
+from utils.sender import send_message
+from utils.admin_notify import notify_admin  # If you use admin alerts
 
-    google_search_url = f"https://www.google.com/search?q=download+{encoded_query}+site:archive.org"
-    external_search_url = f"https://strangemind-movies.koyeb.com/?q={encoded_query}"
+def route_message(phone, message, is_group, group_id, is_admin=False):
+    message = message.strip()
 
-    disclaimer = (
-        "⚠️ *Disclaimer:* Strangemind AI doesn’t host or distribute any movies. "
-        "Results are from public search engines. Use responsibly."
-    )
+    if message.lower().startswith("/movie"):
+        query = message[len("/movie"):].strip()
+        if not query:
+            send_message(phone, "❓ Please provide a movie name after the /movie command.")
+        else:
+            handle_movie_command(phone, query)
+        return
 
-    message = (
-        f"🎬 *Movie Lookup: {query}*\n"
-        f"🔍 Google Search: {google_search_url}\n"
-        f"🔗 External Link (safe): {external_search_url}\n\n"
-        f"{disclaimer}"
-    )
+    if is_admin:
+        if handle_admin_command(phone, message, is_group, group_id):
+            return
 
-    send_message(phone, message)
+    if message.lower() == "/admin":
+        send_message(phone, "👤 A human will reach out to you shortly. Hang tight!")
+        notify_admin(phone, f"📨 New user escalation request from: {phone}")
+        return
+
+    if message.lower() == "/privacy":
+        send_message(
+            phone,
+            "🔐 *Strangemind AI Privacy Policy*\nRead here: https://docs.google.com/document/d/YOUR_DOC_ID_HERE/view"
+        )
+        return
+
+    if message.lower() == "/help":
+        send_message(
+            phone,
+            """📘 *Strangemind AI Help Menu*
+
+Type @strangemind ai followed by your question.
+
+Commands:
+• `/movie <title>` - Search for a movie
+• `/admin` - Contact human support
+• `/privacy` - View privacy policy
+• `/help` - Show this menu
+
+⚠️ I don’t store personal messages. I'm here to help, not to snoop. 🔐"""
+        )
+        return
+
+    send_message(phone, "🤖 I'm not sure what that means. Type /help for a list of commands.")
