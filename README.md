@@ -6,11 +6,8 @@
 
 ## Features 🚀
 
-- **Intelligent Chat & Content Generation**: Powered by OpenAI GPT models for text, meme, and story generation.
+- **Intelligent Chat & Content Generation**: Powered by OpenAI GPT models for text and story generation.
 - **Movie Search & Streaming**: Search for movies, watch trailers, and get streaming/download links scraped from multiple sources.
-- **Background Game Economy**: Users earn XP and coins simply by chatting with the bot; coins accumulate in a vault for withdrawal.
-- **Referral System**: Boost your earnings by inviting friends — both referrer and referee get bonuses.
-- **Leaderboard & Ranking**: Track top earners and most engaged users.
 - **Spam & Abuse Detection**: Keep the community clean and safe.
 - **Admin Controls**: Manage premium features, user access, and bot settings remotely.
 
