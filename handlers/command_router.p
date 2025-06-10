@@ -1,30 +1,21 @@
-def handle_user_command(phone, message, is_group, group_id):
-    message = message.strip().lower()
+def handle_movie_command(phone, query):
+    from urllib.parse import quote_plus
 
-    if message == "/admin":
-        send_message(phone, "👤 A human will reach out to you shortly. Hang tight!")
-        notify_admin(phone, f"📨 New user escalation request from: {phone}")
-        return
+    encoded_query = quote_plus(query.strip())
 
-    if message == "/privacy":
-        send_message(
-            phone,
-            "🔐 *Strangemind AI Privacy Policy*\nRead here: https://docs.google.com/document/d/YOUR_DOC_ID_HERE/view"
-        )
-        return
+    google_search_url = f"https://www.google.com/search?q=download+{encoded_query}+site:archive.org"
+    external_search_url = f"https://strangemind-movies.koyeb.com/?q={encoded_query}"
 
-    if message == "/help":
-        send_message(
-            phone,
-            """📘 *Strangemind AI Help Menu*
+    disclaimer = (
+        "⚠️ *Disclaimer:* Strangemind AI doesn’t host or distribute any movies. "
+        "Results are from public search engines. Use responsibly."
+    )
 
-Type `@strangemind ai` followed by your question.
+    message = (
+        f"🎬 *Movie Lookup: {query}*\n"
+        f"🔍 Google Search: {google_search_url}\n"
+        f"🔗 External Link (safe): {external_search_url}\n\n"
+        f"{disclaimer}"
+    )
 
-Commands:
-• `/admin` - Contact human support
-• `/privacy` - View privacy policy
-• `/help` - Show this menu
-
-⚠️ I don’t store personal messages. I'm here to help, not to snoop. 🔐"""
-        )
-        return
+    send_message(phone, message)
