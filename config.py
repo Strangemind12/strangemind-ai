@@ -29,3 +29,11 @@ PREMIUM_YEAR_DURATION = timedelta(days=365)
 # --- Vault/Earnings System ---
 VAULT_CURRENCY = "NGN"  # Nigerian Naira
 ENABLE_VAULT = os.getenv('ENABLE_VAULT', 'true').lower() == 'true'
+# config.py
+
+MONGO_URI = "mongodb+srv://your_mongo_connection"
+WHATSAPP_API_URL = "https://your-whatsapp-api-url.com/send"
+WHATSAPP_API_KEY = "your-whatsapp-api-key"
+SHRINK_LINK_API_KEY = "your_shrinkearn_api_key"
+SHRINK_LINK_API = "https://api.shrinkearn.com/api"
+ADMIN_PHONE_NUMBER = "234XXXXXXXXXX"  # Replace with real admin number
