@@ -109,3 +109,16 @@ def aggregate_search(query, tmdb_api_key=None):
             print(f"TMDB search failed: {e}")
 
     return results
+# scraper.py
+
+def fetch_movie_details(title):
+    """
+    Dummy movie fetcher - replace this with real scraping or API logic.
+    """
+    title_lower = title.strip().lower().replace(" ", "-")
+    fake_link = f"https://example.com/movies/{title_lower}"
+    return {
+        "title": title.title(),
+        "link": fake_link,
+        "trailer": f"https://youtube.com/watch?v=dQw4w9WgXcQ"  # 😏
+    }
