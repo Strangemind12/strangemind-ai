@@ -1,6 +1,13 @@
-short_url = monetize_link(long_url)
-reply = (
-    "🔗 Here's your link (we get a tiny cent to keep Strangemind AI alive):\n"
-    f"{short_url}"
-)
-send_message(user_phone, reply)
+from helpers.consent import has_consented, set_consent
+
+def handle_user_command(phone, message, is_group, group_id):
+    message_lower = message.lower()
+
+    if "/start" in message_lower:
+        set_consent(phone)
+        send_message(phone, "✅ You're now connected to Strangemind AI. Type /help to begin.")
+        return
+
+    if not has_consented(phone):
+        send_message(phone, "👋 Please type /start in private chat to activate Strangemind AI.")
+        return
