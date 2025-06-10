@@ -33,3 +33,22 @@ def handle_search():
 💡 _Tap a link to open. Use responsibly!_
 """
     return jsonify({"reply": reply}), 200
+
+from helpers.messaging import send_message
+from helpers.autosave import set_autosave
+
+def handle_admin_command(phone, message, is_group, group_id):
+    if "/autosave_on" in message:
+        set_autosave(phone, True)
+        send_message(phone, "✅ Autosave enabled.")
+    elif "/autosave_off" in message:
+        set_autosave(phone, False)
+        send_message(phone, "❌ Autosave disabled.")
+    elif "/lock_earning" in message:
+        # TODO: Lock logic here
+        send_message(phone, "🔒 Earnings locked.")
+    elif "/unlock_earning" in message:
+        # TODO: Unlock logic here
+        send_message(phone, "🔓 Earnings unlocked.")
+    else:
+        send_message(phone, "🧠 Admin command not recognized.")
