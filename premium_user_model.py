@@ -158,3 +158,28 @@ def handle_message():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+# premium_user_model.py
+
+from pymongo import MongoClient
+from config import MONGO_URI
+
+client = MongoClient(MONGO_URI)
+db = client["strangemind_ai"]
+premium_collection = db["premium_users"]
+
+def is_premium_user(user_id: str) -> bool:
+    return premium_collection.find_one({"user_id": user_id}) is not None
+
+def grant_premium(user_id: str):
+    premium_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"status": "active"}},
+        upsert=True
+    )
+
+def revoke_premium(user_id: str):
+    premium_collection.delete_one({"user_id": user_id})
+
+def list_all_premium_users():
+    return premium_collection.find()
