@@ -1,6 +1,6 @@
 # Strangemind AI 🤖⚡
 
-**Strangemind AI** is a cutting-edge WhatsApp Business AI bot designed for advanced user engagement, entertainment, and passive earning. Powered by Gupshup’s WhatsApp API, OpenAI’s language models, and integrated with a unique game economy and movie streaming features, this bot brings an interactive digital experience to WhatsApp users worldwide.
+**Strangemind AI** is a cutting-edge WhatsApp Business AI bot designed for advanced user engagement, entertainment. Powered by Gupshup’s WhatsApp API, OpenAI’s language models, and integrated with movie streaming features, this bot brings an interactive digital experience to WhatsApp users worldwide.
 
 ---
 
