@@ -1,11 +1,16 @@
-Automated Group Replies Without Opt-In
+from pymongo import MongoClient
 
-🚫 Problem: Meta is strict about consent and automation.
+client = MongoClient("mongodb+srv://your_mongo_url")
+db = client["strangemind_ai"]
+consent_collection = db["consent"]
 
-> If your bot responds to every group message that mentions @Strangemind, and users haven’t opted into that interaction? Violation.
+def has_consented(phone: str) -> bool:
+    user = consent_collection.find_one({"phone": phone})
+    return user.get("consented", False) if user else False
 
-
-
-✅ Allowed: Reply only when users first message the bot privately or explicitly interact (e.g. typing /start).
-
-❌ Not allowed: Bot automatically responding in groups without user initiation.
+def set_consent(phone: str, status: bool):
+    consent_collection.update_one(
+        {"phone": phone},
+        {"$set": {"consented": status}},
+        upsert=True
+    )
