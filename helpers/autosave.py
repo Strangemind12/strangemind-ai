@@ -62,3 +62,19 @@ def get_display_name(phone: str):
     if contact:
         return contact.get("custom_name") or contact.get("name") or phone
     return phone
+    from pymongo import MongoClient
+
+client = MongoClient("mongodb+srv://your_mongo_url")
+db = client["strangemind_ai"]
+autosave_collection = db["autosave_settings"]
+
+def is_autosave_enabled(user_id: str) -> bool:
+    result = autosave_collection.find_one({"user_id": user_id})
+    return result.get("enabled", False) if result else False
+
+def set_autosave(user_id: str, status: bool):
+    autosave_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"enabled": status}},
+        upsert=True
+        )
