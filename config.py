@@ -37,3 +37,13 @@ WHATSAPP_API_KEY = "your-whatsapp-api-key"
 SHRINK_LINK_API_KEY = "your_shrinkearn_api_key"
 SHRINK_LINK_API = "https://api.shrinkearn.com/api"
 ADMIN_PHONE_NUMBER = "234XXXXXXXXXX"  # Replace with real admin number
+import os
+
+# Your existing vars...
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+ADMIN_PHONE = os.getenv("ADMIN_PHONE", "+2348012345678")
+NIGERIA_MONTHLY_PRICE = float(os.getenv("NIGERIA_MONTHLY_PRICE", "5000.00"))
+
+# Add Short.io config
+SHORTIO_API_KEY = os.getenv("SHORTIO_API_KEY")  # your key
+SHORTIO_DOMAIN = os.getenv("SHORTIO_DOMAIN", "short.gy")  # or your custom domain
