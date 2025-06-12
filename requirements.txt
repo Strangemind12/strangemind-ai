@@ -7,5 +7,4 @@ flask
 pymongo
 requests
 streamlit
-openai
-python-dotenv
+streamlit-autorefresh
