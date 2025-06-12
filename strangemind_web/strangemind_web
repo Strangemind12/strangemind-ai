@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(".."))  # 🔧 Add parent folder to Python path
 
-from al_engine import generate_response  # ✅ Correct import
+from .al_engine import generate_response  # ✅ Correct import
 
 import streamlit as st
 
