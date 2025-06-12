@@ -1,0 +1,10 @@
+[
+  {
+    "id": "msg_001",
+    "sender_name": "John Doe",
+    "sender_id": "2348012345678",
+    "chat_type": "user",
+    "message": "/movie Oppenheimer",
+    "timestamp": "2025-06-12 14:35:21"
+  }
+]
