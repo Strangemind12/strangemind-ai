@@ -1,8 +1,4 @@
-import sys
-import os
-sys.path.append(os.path.abspath(".."))  # 🔧 Add parent folder to Python path
-
-from al_engine import generate_response  # ✅ Correct import
+from al_engine import generate_response  # This pulls your custom AI logic
 
 import streamlit as st
 
@@ -23,4 +19,3 @@ if st.button("Get Response"):
                 st.error(f"Something broke: {e}")
     else:
         st.warning("Don’t leave it blank. Give your AI something to chew on.")
-        
