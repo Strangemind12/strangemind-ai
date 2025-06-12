@@ -1,24 +1,4 @@
-import json
-from datetime import datetime
+from bot_utils.supa_logger import log_to_supabase
 
-def log_message(sender_id, sender_name, message, chat_type="user"):
-    log_file = "logs/messages.json"
-
-    msg_log = {
-        "id": f"msg_{int(datetime.now().timestamp())}",
-        "sender_id": sender_id,
-        "sender_name": sender_name,
-        "message": message,
-        "chat_type": chat_type,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-
-    try:
-        with open(log_file, "r+") as f:
-            logs = json.load(f)
-            logs.insert(0, msg_log)
-            f.seek(0)
-            json.dump(logs, f, indent=2)
-    except:
-        with open(log_file, "w") as f:
-            json.dump([msg_log], f, indent=2)
+# On each message:
+log_to_supabase(sender_id, sender_name, message, chat_type)
