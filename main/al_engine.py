@@ -1,32 +1,20 @@
 import openai
+import os
 
-def get_openai_reply(user_prompt):
-    """Fetches a clean, Meta-compliant AI reply."""
+# Load your OpenAI API key from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+def generate_response(prompt):
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",  # or gpt-4 if you have access
             messages=[
-                {"role": "system", "content": (
-                    "You are Strangemind AI, a professional, helpful, and concise assistant. "
-                    "Never give medical, financial, or legal advice. "
-                    "Keep responses safe, respectful, and suitable for all audiences."
-                )},
-                {"role": "user", "content": user_prompt}
+                {"role": "system", "content": "You are a helpful, intelligent assistant."},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=500,
+            max_tokens=150
         )
-        content = response["choices"][0]["message"]["content"]
-        return sanitize_openai_reply(content)
+        return response['choices'][0]['message']['content'].strip()
     except Exception as e:
-        print(f"[OpenAI Error] {e}")
-        return "I'm having trouble generating a response right now."
-
-def sanitize_openai_reply(text):
-    """Ensure output is stripped of risky or non-compliant content."""
-    blocklist = ["diagnosis", "prescribe", "investment advice", "click here", "scam", "sex", "violence"]
-    lower = text.lower()
-    if any(bad in lower for bad in blocklist):
-        return "I'm unable to respond to that. Please ask something appropriate."
-    return text.strip()
-
+        return f"Error generating response: {e}"
