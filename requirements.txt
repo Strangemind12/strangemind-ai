@@ -8,3 +8,4 @@ pymongo
 requests
 streamlit
 streamlit-autorefresh
+supabase
