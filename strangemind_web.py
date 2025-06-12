@@ -1,5 +1,10 @@
+import sys
+import os
+sys.path.append(os.path.abspath(".."))  # 🔧 Add parent folder to Python path
+
+from al_engine import generate_response  # ✅ Correct import
+
 import streamlit as st
-from al_engine import generate_response  # Make sure this file exists in same folder
 
 st.set_page_config(page_title="Strangemind AI", layout="centered")
 
