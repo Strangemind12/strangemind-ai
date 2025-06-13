@@ -1,4 +1,10 @@
-from bot_utils.supa_logger import log_to_supabase
-
-# On each message:
-log_to_supabase(sender_id, sender_name, message, chat_type)
+[
+  {
+    "id": "test123",
+    "timestamp": "2025-06-12 14:00",
+    "sender_name": "Test User",
+    "sender_id": "123456789",
+    "chat_type": "user",
+    "message": "Hello from the test zone!"
+  }
+]
