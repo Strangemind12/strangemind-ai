@@ -2,36 +2,29 @@ import os
 import streamlit as st
 from supabase import create_client, Client
 
-# --- Load password ---
-# Priority: st.secrets (local) else env vars (Render)
-try:
-    ADMIN_PASSWORD = st.secrets["admin_password"]
-except Exception:
-    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+# --- Load secrets with fallback ---
+ADMIN_PASSWORD = st.secrets.get("admin_password") or os.getenv("ADMIN_PASSWORD")
+SUPABASE_URL = st.secrets.get("supabase", {}).get("url") or os.getenv("SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("supabase", {}).get("key") or os.getenv("SUPABASE_KEY")
 
-# --- Load Supabase config ---
-try:
-    SUPABASE_URL = st.secrets["supabase"]["url"]
-    SUPABASE_KEY = st.secrets["supabase"]["key"]
-except Exception:
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# --- Debug loaded secrets ---
+# --- Debug loaded secrets for sanity check ---
 st.write("🔐 Secrets loaded:",
-         {"ADMIN_PASSWORD set?": bool(ADMIN_PASSWORD),
-          "SUPABASE_URL set?": bool(SUPABASE_URL),
-          "SUPABASE_KEY set?": bool(SUPABASE_KEY)})
+         {
+            "ADMIN_PASSWORD set?": bool(ADMIN_PASSWORD),
+            "SUPABASE_URL set?": bool(SUPABASE_URL),
+            "SUPABASE_KEY set?": bool(SUPABASE_KEY)
+         })
 
+# --- Validate config presence ---
 if not ADMIN_PASSWORD:
     st.error("❌ Admin password not set! Set it in secrets.toml or environment variables.")
     st.stop()
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("❌ Supabase URL or Key missing! Check your secrets or env vars.")
+    st.error("❌ Supabase URL or Key missing! Check your secrets or environment variables.")
     st.stop()
 
-# --- Authentication ---
+# --- Authenticate admin ---
 def authenticate():
     password = st.text_input("Enter admin password:", type="password")
     if password == "":
@@ -51,7 +44,7 @@ if not authenticate():
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 st.write("✅ Connected to Supabase")
 
-# --- Step 4: Fetch Messages ---
+# --- Fetch and display messages ---
 st.header("📥 Incoming Messages")
 
 messages_response = supabase.table("messages").select("*").order("timestamp", desc=True).limit(10).execute()
@@ -69,7 +62,7 @@ else:
         **Time:** {msg['timestamp']}  
         """)
 
-        # --- Step 5: Insert a Reply ---
+        # --- Reply UI ---
         with st.expander(f"💬 Reply to: {msg['sender_name']}"):
             reply_text = st.text_area(f"Write reply to message ID {msg['id']}", key=f"reply_{msg['id']}")
             if st.button(f"Send Reply to {msg['sender_name']}", key=f"btn_{msg['id']}"):
@@ -83,7 +76,7 @@ else:
                     }).execute()
                     st.success(f"✅ Reply sent to {msg['sender_name']}!")
 
-        # --- Bonus: Show Replies ---
+        # --- Show replies ---
         reply_res = supabase.table("replies").select("*").eq("message_id", msg['id']).execute()
         replies = reply_res.data
         if replies:
@@ -91,5 +84,5 @@ else:
                 for reply in replies:
                     st.markdown(f"""
                     > **Reply:** {reply['reply_text']}  
-                    ⏰ {reply['replied_at']} — by *{reply['replied_by']}*
+                    ⏰ {reply.get('replied_at', 'Unknown time')} — by *{reply['replied_by']}*
                     """)
