@@ -1,18 +1,18 @@
 import streamlit as st
 from supabase import create_client, Client
 
-# Load secrets the correct way
+# ---- TOP: Load secrets ----
 ADMIN_PASSWORD = st.secrets["admin_password"]
 SUPABASE_URL = st.secrets["supabase"]["url"]
 SUPABASE_KEY = st.secrets["supabase"]["key"]
 
-# Debug display
+# ---- Show secrets (debug) ----
 st.write("🔐 Secrets loaded:",
          {"ADMIN_PASSWORD set?": bool(ADMIN_PASSWORD),
           "SUPABASE_URL set?": bool(SUPABASE_URL),
           "SUPABASE_KEY set?": bool(SUPABASE_KEY)})
 
-# Authentication
+# ---- Authenticate admin ----
 def authenticate():
     password = st.text_input("Enter admin password:", type="password")
     if password == "":
@@ -25,12 +25,52 @@ def authenticate():
         st.error("❌ Wrong password")
         st.stop()
 
-# Check authentication
 if not authenticate():
     st.stop()
 
-# Supabase connection
+# ---- Connect to Supabase ----
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Test query (optional)
 st.write("✅ Connected to Supabase")
+
+# ==== STEP 4: Fetch Messages ====
+st.header("📥 Incoming Messages")
+
+messages_response = supabase.table("messages").select("*").order("timestamp", desc=True).limit(10).execute()
+messages = messages_response.data
+
+if not messages:
+    st.info("No messages yet.")
+else:
+    for msg in messages:
+        st.markdown(f"""
+        **Sender Name:** {msg['sender_name']}  
+        **Sender ID:** {msg['sender_id']}  
+        **Chat Type:** {msg['chat_type']}  
+        **Message:** {msg['message']}  
+        **Time:** {msg['timestamp']}  
+        """)
+
+        # ==== STEP 5: Insert a Reply ====
+        with st.expander(f"💬 Reply to: {msg['sender_name']}"):
+            reply_text = st.text_area(f"Write reply to message ID {msg['id']}", key=f"reply_{msg['id']}")
+            if st.button(f"Send Reply to {msg['sender_name']}", key=f"btn_{msg['id']}"):
+                if reply_text.strip() == "":
+                    st.warning("Reply cannot be empty.")
+                else:
+                    supabase.table("replies").insert({
+                        "message_id": msg['id'],
+                        "reply_text": reply_text,
+                        "replied_by": "admin"
+                    }).execute()
+                    st.success(f"✅ Reply sent to {msg['sender_name']}!")
+
+        # ==== BONUS: Show Replies ====
+        reply_res = supabase.table("replies").select("*").eq("message_id", msg['id']).execute()
+        replies = reply_res.data
+        if replies:
+            with st.expander(f"📨 View Replies to: {msg['sender_name']}"):
+                for reply in replies:
+                    st.markdown(f"""
+                    > **Reply:** {reply['reply_text']}  
+                    ⏰ {reply['replied_at']} — by *{reply['replied_by']}*
+                    """)
