@@ -15,8 +15,5 @@ streamlit
 streamlit-autorefresh
 toml
 
-# Supabase SDK (corrected to community version)
-supabase
-
 # Env vars
 python-dotenv==1.0.1
