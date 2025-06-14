@@ -10,3 +10,8 @@ streamlit
 streamlit-autorefresh
 toml
 supabase
+fastapi
+uvicorn
+pydantic
+python-dotenv
+postgrest-py
