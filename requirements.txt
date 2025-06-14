@@ -1,17 +1,22 @@
-Flask==2.3.2
-requests==2.31.0
-beautifulsoup4==4.12.2
-pymongo==4.3.3
-python-dotenv==1.0.0
-flask
-pymongo
-requests
-streamlit
-streamlit-autorefresh
-toml
-supabase
+# Core APIs
 fastapi==0.110.2
 uvicorn==0.29.0
 pydantic==1.10.15
-python-dotenv==1.0.1
 postgrest-py==0.10.6
+
+# Flask components (if you're using Flask elsewhere)
+flask==2.3.2
+requests==2.31.0
+beautifulsoup4==4.12.2
+pymongo==4.3.3
+
+# Streamlit dashboard
+streamlit
+streamlit-autorefresh
+toml
+
+# Supabase SDK (corrected to community version)
+supabase-py==1.0.3
+
+# Env vars
+python-dotenv==1.0.1
